@@ -1,0 +1,86 @@
+# =========================================================================
+# FutureSign Workspace - Professional Root GitIgnore
+# =========================================================================
+
+# --- System & OS Files ---
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Security / Keys ---
+*.pem
+*.key
+*.crt
+*.pub
+
+# --- IDE & Editors ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# --- Python Environment & Compiled Code ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.tox/
+.coverage
+.cache
+htmlcov/
+
+# --- Node.js & Frontend dependencies ---
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Environment Configuration (Secrets) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+backend/.env
+frontend/.env.local
+
+# --- Temporary / Local Dev Utility Scripts ---
+insert_mock_logs.py
+backend/db_check.py
+backend/db_check_constraints.py
+backend/list_users.py
+backend/purge_mock_data.py
+backend/verify_endpoints.py
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Backend dev leftover ---
+backend/node_modules/
+backend/package.json
+backend/package-lock.json

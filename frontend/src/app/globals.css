@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@plugin "tailwindcss-animate";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-primary: var(--primary);
+  --color-primary-content: var(--primary-content);
+  
+  --color-base-100: var(--base-100);
+  --color-base-200: var(--base-200);
+  --color-base-300: var(--base-300);
+  --color-base-content: var(--base-content);
+  
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+}
+
+:root {
+  --primary: #2563eb;
+  --primary-content: #ffffff;
+  
+  --base-100: #ffffff;
+  --base-200: #f8fafc;
+  --base-300: #f1f5f9;
+  --base-content: #0f172a;
+}
+
+[data-theme="corporate-navy"] {
+  --primary: #3b82f6;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #f1f5f9;
+  --base-300: #e2e8f0;
+  --base-content: #0f172a;
+}
+
+[data-theme="forest-evergreen"] {
+  --primary: #10b981;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #f0fdf4;
+  --base-300: #dcfce7;
+  --base-content: #064e3b;
+}
+
+[data-theme="royal-purple"] {
+  --primary: #8b5cf6;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #faf5ff;
+  --base-300: #f3e8ff;
+  --base-content: #2e1065;
+}
+
+[data-theme="minimalist-slate"] {
+  --primary: #475569;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #f8fafc;
+  --base-300: #f1f5f9;
+  --base-content: #0f172a;
+}
+
+[data-theme="vibrant-orange"] {
+  --primary: #f97316;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #fff7ed;
+  --base-300: #ffedd5;
+  --base-content: #7c2d12;
+}
+
+[data-theme="vibrant-red"] {
+  --primary: #ef4444;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #fef2f2;
+  --base-300: #fee2e2;
+  --base-content: #7f1d1d;
+}
+
+[data-theme="vibrant-pink"] {
+  --primary: #ec4899;
+  --primary-content: #ffffff;
+  --base-100: #ffffff;
+  --base-200: #fdf2f8;
+  --base-300: #fce7f3;
+  --base-content: #831843;
+}
+
+[data-theme="high-contrast-black"] {
+  --primary: #ffffff;
+  --primary-content: #000000;
+  --base-100: #000000;
+  --base-200: #111111;
+  --base-300: #222222;
+  --base-content: #ffffff;
+}
+
+@layer base {
+  * {
+    @apply border-base-content/10;
+  }
+  body {
+    @apply bg-base-200 text-base-content antialiased;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+/* Helper Utilities */
+.glass {
+  @apply bg-base-100/70 backdrop-blur-md border border-base-content/5;
+}
+
+.text-base-content-secondary {
+  color: color-mix(in srgb, var(--base-content), transparent 50%);
+}
+
+.border-base-content-10 {
+  border-color: color-mix(in srgb, var(--base-content), transparent 90%);
+}

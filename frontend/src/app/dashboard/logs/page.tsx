@@ -1,0 +1,622 @@
+"use client"
+
+import React, { useState, useEffect, useCallback } from 'react'
+import { 
+  History, 
+  Search, 
+  Filter,
+  Terminal,
+  User,
+  Activity,
+  Calendar,
+  RefreshCw,
+  ChevronUp,
+  ChevronDown,
+  Clock,
+  BarChart3,
+  Users,
+  Shield,
+  Layers,
+  ArrowUpDown
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { API_URL } from '@/lib/api'
+
+// Helper for formatting duration
+const formatDuration = (minutes: number) => {
+  if (!minutes || isNaN(minutes) || minutes < 0) return "0m"
+  const h = Math.floor(minutes / 60)
+  const m = Math.round(minutes % 60)
+  if (h === 0) return `${m}m`
+  return `${h}h ${m}m`
+}
+
+export default function LogsPage() {
+  // Date Range Defaults (Last 30 Days)
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 30)
+    return d.toISOString().split('T')[0]
+  })
+  const [dateTo, setDateTo] = useState(() => {
+    return new Date().toISOString().split('T')[0]
+  })
+
+  // Filter States
+  const [actorFilter, setActorFilter] = useState("")
+  const [actionFilter, setActionFilter] = useState("ALL")
+  const [sessionGroupBy, setSessionGroupBy] = useState<"month" | "day">("month")
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' } | null>(null)
+
+  // Data States
+  const [logs, setLogs] = useState<any[]>([])
+  const [totalLogs, setTotalLogs] = useState(0)
+  const [loadingLogs, setLoadingLogs] = useState(true)
+
+  const [summary, setSummary] = useState<any>({
+    total_logins_today: 0,
+    unique_users_today: 0,
+    total_logins_period: 0,
+    top_users: []
+  })
+  const [loadingSummary, setLoadingSummary] = useState(true)
+
+  const [sessions, setSessions] = useState<any[]>([])
+  const [loadingSessions, setLoadingSessions] = useState(true)
+
+  // Fetch functions
+  const fetchLogs = useCallback(async () => {
+    setLoadingLogs(true)
+    try {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        page_size: itemsPerPage.toString(),
+        action_filter: actionFilter,
+        actor_filter: actorFilter,
+        date_from: dateFrom,
+        date_to: dateTo
+      })
+      const res = await fetch(`${API_URL}/api/v1/logs?${params.toString()}`, { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        // If paginated response
+        if (data && data.logs) {
+          setLogs(data.logs)
+          setTotalLogs(data.total)
+        } else {
+          setLogs(data)
+          setTotalLogs(data.length)
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching logs:", err)
+    } finally {
+      setLoadingLogs(false)
+    }
+  }, [currentPage, itemsPerPage, actionFilter, actorFilter, dateFrom, dateTo])
+
+  const fetchSummary = useCallback(async () => {
+    setLoadingSummary(true)
+    try {
+      const params = new URLSearchParams({
+        date_from: dateFrom,
+        date_to: dateTo
+      })
+      const res = await fetch(`${API_URL}/api/v1/logs/summary?${params.toString()}`, { credentials: 'include' })
+      if (res.ok) {
+        setSummary(await res.json())
+      }
+    } catch (err) {
+      console.error("Error fetching summary:", err)
+    } finally {
+      setLoadingSummary(false)
+    }
+  }, [dateFrom, dateTo])
+
+  const fetchSessions = useCallback(async () => {
+    setLoadingSessions(true)
+    try {
+      const params = new URLSearchParams({
+        group_by: sessionGroupBy,
+        actor_filter: actorFilter,
+        date_from: dateFrom,
+        date_to: dateTo
+      })
+      const res = await fetch(`${API_URL}/api/v1/logs/sessions?${params.toString()}`, { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setSessions(data.sessions || [])
+      }
+    } catch (err) {
+      console.error("Error fetching sessions:", err)
+    } finally {
+      setLoadingSessions(false)
+    }
+  }, [sessionGroupBy, actorFilter, dateFrom, dateTo])
+
+
+
+  // Trigger fetches on filter change
+  useEffect(() => {
+    fetchLogs()
+  }, [fetchLogs])
+
+  useEffect(() => {
+    fetchSummary()
+  }, [fetchSummary])
+
+  useEffect(() => {
+    fetchSessions()
+  }, [fetchSessions])
+
+  const handleRefreshAll = () => {
+    fetchLogs()
+    fetchSummary()
+    fetchSessions()
+  }
+
+  // Aggregate user sessions for the bar chart
+  const userAggregates = React.useMemo(() => {
+    const map: Record<string, { actor_id: string; full_name: string; total_minutes: number; session_count: number }> = {}
+    sessions.forEach(s => {
+      if (!map[s.actor_id]) {
+        map[s.actor_id] = { actor_id: s.actor_id, full_name: s.full_name, total_minutes: 0, session_count: 0 }
+      }
+      map[s.actor_id].total_minutes += s.total_minutes
+      map[s.actor_id].session_count += s.session_count
+    })
+    return Object.values(map).sort((a, b) => b.total_minutes - a.total_minutes)
+  }, [sessions])
+
+  const maxMinutes = React.useMemo(() => {
+    const max = Math.max(...userAggregates.map(u => u.total_minutes), 60)
+    return max
+  }, [userAggregates])
+
+  // Sorting handlers (local table sorting)
+  const handleSort = (key: string) => {
+    let direction: 'ascending' | 'descending' = 'ascending'
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending'
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const sortedLogs = React.useMemo(() => {
+    if (!sortConfig) return logs
+    const sorted = [...logs]
+    sorted.sort((a, b) => {
+      let aVal = a[sortConfig.key] || ""
+      let bVal = b[sortConfig.key] || ""
+
+      if (sortConfig.key === 'created_at') {
+        aVal = new Date(aVal).getTime()
+        bVal = new Date(bVal).getTime()
+      }
+
+      if (typeof aVal === 'string') {
+        return sortConfig.direction === 'ascending'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      }
+
+      if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1
+      if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1
+      return 0
+    })
+    return sorted
+  }, [logs, sortConfig])
+
+  const getActionColor = (action: string) => {
+    if (action === 'AUTH_LOGIN_SUCCESS') return 'text-emerald-500 bg-emerald-500/10 border border-emerald-500/20'
+    if (action === 'AUTH_LOGOUT') return 'text-slate-400 bg-slate-400/10 border border-slate-400/20'
+    if (action.includes('DEPROVISION') || action.includes('DELETE') || action.includes('FAIL')) {
+      return 'text-rose-500 bg-rose-500/10 border border-rose-500/20'
+    }
+    if (action.includes('PROVISION') || action.includes('CREATE') || action.includes('ACTIVATED')) {
+      return 'text-amber-500 bg-amber-500/10 border border-amber-500/20'
+    }
+    return 'text-sky-500 bg-sky-500/10 border border-sky-500/20'
+  }
+
+  const totalPages = Math.ceil(totalLogs / itemsPerPage)
+
+  return (
+    <div className="space-y-8 pb-10">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
+            <History className="text-primary" /> Activity & Session Logs
+          </h1>
+          <p className="text-base-content/50 text-sm">Real-time audit trail and session duration analytics</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleRefreshAll} className="btn btn-ghost btn-sm text-base-content/50 hover:text-base-content gap-2">
+            <RefreshCw size={16} className={cn((loadingLogs || loadingSummary || loadingSessions) && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { 
+            label: 'Logins Today', 
+            value: summary.total_logins_today, 
+            subtitle: 'Successful authentications',
+            icon: Shield, 
+            color: 'text-emerald-500',
+            loading: loadingSummary
+          },
+          { 
+            label: 'Unique Users Today', 
+            value: summary.unique_users_today, 
+            subtitle: 'Different active accounts',
+            icon: Users, 
+            color: 'text-indigo-500',
+            loading: loadingSummary
+          },
+          { 
+            label: 'Total Period Logins', 
+            value: summary.total_logins_period, 
+            subtitle: 'Logins in selected range',
+            icon: Activity, 
+            color: 'text-primary',
+            loading: loadingSummary
+          },
+          { 
+            label: 'Top Active User', 
+            value: summary.top_users && summary.top_users[0] ? summary.top_users[0].full_name : 'N/A', 
+            subtitle: summary.top_users && summary.top_users[0] ? `${summary.top_users[0].login_count} logins this period` : 'No data in period',
+            icon: Clock, 
+            color: 'text-amber-500',
+            loading: loadingSummary
+          },
+        ].map((stat, i) => (
+          <div key={i} className="bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm flex items-center justify-between transition-all hover:shadow-md">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase text-base-content/30 tracking-widest">{stat.label}</span>
+              {stat.loading ? (
+                <div className="h-8 bg-base-200 animate-pulse rounded w-16"></div>
+              ) : (
+                <div className="text-xl font-black truncate max-w-[180px]">{stat.value}</div>
+              )}
+              <span className="text-[10px] text-base-content/40 block leading-tight">{stat.subtitle}</span>
+            </div>
+            <div className={cn("p-3 rounded-xl bg-base-200/50", stat.color)}>
+              <stat.icon size={22} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Date & Filter controls */}
+      <div className="bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm space-y-4">
+        <h2 className="text-sm font-bold flex items-center gap-2"><Filter size={16} className="text-primary" /> Filter Config</h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Date From</label>
+            <input 
+              type="date" 
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+              className="input input-bordered input-sm w-full text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Date To</label>
+            <input 
+              type="date" 
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+              className="input input-bordered input-sm w-full text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Filter by User ID</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/30" size={14} />
+              <input 
+                type="text" 
+                placeholder="Search actor..." 
+                value={actorFilter}
+                onChange={(e) => { setActorFilter(e.target.value); setCurrentPage(1); }}
+                className="input input-bordered input-sm w-full pl-8 text-xs"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Action Filter</label>
+            <select
+              value={actionFilter}
+              onChange={(e) => { setActionFilter(e.target.value); setCurrentPage(1); }}
+              className="select select-bordered select-sm w-full text-xs font-bold"
+            >
+              <option value="ALL">All Actions</option>
+              <option value="AUTH_LOGIN_SUCCESS">Login Success (AUTH_LOGIN_SUCCESS)</option>
+              <option value="AUTH_LOGOUT">Logout (AUTH_LOGOUT)</option>
+              <option value="USER_PROVISIONED">User Provisioned</option>
+              <option value="USER_ACTIVATED">User Activated</option>
+              <option value="USER_DEPROVISIONED">User Deprovisioned</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Analytics: Chart and Monthly Summary Table */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* CSS Bar Chart */}
+        <div className="lg:col-span-6 bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm flex flex-col justify-between min-h-[350px]">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-black flex items-center gap-1.5">
+                  <BarChart3 className="text-primary" size={16} /> Total Usage Time per User
+                </h3>
+                <p className="text-[10px] text-base-content/40 leading-normal">Sum of paired Login/Logout sessions in selected range</p>
+              </div>
+              <span className="text-[10px] font-mono bg-base-200 px-2 py-0.5 rounded text-base-content/50">
+                {userAggregates.length} users
+              </span>
+            </div>
+
+            {loadingSessions ? (
+              <div className="h-56 flex items-center justify-center">
+                <span className="loading loading-spinner loading-md text-primary"></span>
+              </div>
+            ) : userAggregates.length === 0 ? (
+              <div className="h-56 flex flex-col items-center justify-center text-center">
+                <span className="text-base-content/20 italic font-black text-xl mb-2">NO_SESSION_DATA</span>
+                <span className="text-[10px] text-base-content/40 italic">Ensure users have Login and Logout activities within this timeframe.</span>
+              </div>
+            ) : (
+              <div className="h-56 flex items-end justify-around gap-2 px-2 border-b border-base-300 pb-2">
+                {userAggregates.slice(0, 10).map((item, idx) => (
+                  <div key={idx} className="flex flex-col items-center flex-1 max-w-[50px] group relative h-full justify-end">
+                    
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 bg-neutral text-neutral-content text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20 shadow-lg leading-normal">
+                      <div className="font-bold">{item.full_name}</div>
+                      <div className="text-primary-content">{formatDuration(item.total_minutes)}</div>
+                      <div className="text-neutral-content/60">{item.session_count} sessions</div>
+                    </div>
+                    
+                    {/* Bar */}
+                    <div 
+                      className="w-full bg-gradient-to-t from-primary/70 to-primary rounded-t-lg transition-all duration-500 hover:from-primary hover:to-primary-focus cursor-pointer shadow-sm"
+                      style={{ height: `${(item.total_minutes / maxMinutes) * 85 + 5}%` }}
+                    />
+                    
+                    {/* Label */}
+                    <div className="text-[9px] text-base-content/60 mt-1.5 font-mono truncate w-full text-center" title={item.actor_id}>
+                      {item.actor_id}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div className="text-[9px] text-base-content/40 text-right mt-2 italic">
+            * Showing top 10 active users. Hover bar to view precise session details.
+          </div>
+        </div>
+
+        {/* Monthly Summary Table */}
+        <div className="lg:col-span-6 bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm flex flex-col justify-between min-h-[350px]">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-black flex items-center gap-1.5">
+                  <Calendar className="text-indigo-500" size={16} /> Monthly Usage Summaries
+                </h3>
+                <p className="text-[10px] text-base-content/40 leading-normal">Grouped work hours per user and period</p>
+              </div>
+              <div className="flex gap-1.5">
+                <button 
+                  onClick={() => setSessionGroupBy("month")}
+                  className={cn("px-2 py-0.5 text-[9px] font-bold rounded transition-all", sessionGroupBy === 'month' ? "bg-indigo-500 text-white" : "bg-base-200 hover:bg-base-300 text-base-content/60")}
+                >
+                  Month
+                </button>
+                <button 
+                  onClick={() => setSessionGroupBy("day")}
+                  className={cn("px-2 py-0.5 text-[9px] font-bold rounded transition-all", sessionGroupBy === 'day' ? "bg-indigo-500 text-white" : "bg-base-200 hover:bg-base-300 text-base-content/60")}
+                >
+                  Day
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto max-h-[220px]">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-base-100 border-b border-base-300 text-[10px] font-black uppercase text-base-content/40">
+                  <tr>
+                    <th className="pb-2">User / Actor</th>
+                    <th className="pb-2">Period</th>
+                    <th className="pb-2 text-center">Sessions</th>
+                    <th className="pb-2 text-right">Total Duration</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-base-200">
+                  {loadingSessions ? (
+                    [1, 2, 3].map(i => (
+                      <tr key={i} className="animate-pulse">
+                        <td colSpan={4} className="py-2.5"><div className="h-3.5 bg-base-200 rounded w-full"></div></td>
+                      </tr>
+                    ))
+                  ) : sessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-10 text-center text-[10px] text-base-content/30 italic">
+                        No monthly records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    sessions.slice(0, 50).map((s, idx) => (
+                      <tr key={idx} className="hover:bg-base-200/20">
+                        <td className="py-2">
+                          <div className="font-bold leading-tight">{s.full_name}</div>
+                          <div className="text-[9px] text-base-content/40 font-mono">{s.actor_id}</div>
+                        </td>
+                        <td className="py-2 font-mono text-[10px] text-base-content/60">{s.period}</td>
+                        <td className="py-2 text-center font-bold">{s.session_count}</td>
+                        <td className="py-2 text-right font-mono font-bold text-indigo-500">
+                          {formatDuration(s.total_minutes)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="text-[9px] text-base-content/30 italic mt-3">
+            * Session calculations automatically pair logins and logouts, assuming max 8hr session length on missing logout.
+          </div>
+        </div>
+      </div>
+
+      {/* Audit Log Table */}
+      <div className="bg-base-100 rounded-2xl border border-base-300 shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-base-300 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-black flex items-center gap-1.5">
+              <Terminal className="text-warning" size={16} /> Audit Trail logs
+            </h3>
+            <p className="text-[10px] text-base-content/40 leading-normal">Granular chronological log entries</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-base-200/40 border-b border-base-300 text-[10px] font-black uppercase text-base-content/40">
+              <tr>
+                <th className="px-6 py-4 cursor-pointer select-none hover:text-base-content transition-colors" onClick={() => handleSort('created_at')}>
+                  <div className="flex items-center gap-1">
+                    Timestamp <ArrowUpDown size={12} />
+                  </div>
+                </th>
+                <th className="px-6 py-4 cursor-pointer select-none hover:text-base-content transition-colors" onClick={() => handleSort('action')}>
+                  <div className="flex items-center gap-1">
+                    Action <ArrowUpDown size={12} />
+                  </div>
+                </th>
+                <th className="px-6 py-4 cursor-pointer select-none hover:text-base-content transition-colors" onClick={() => handleSort('actor_id')}>
+                  <div className="flex items-center gap-1">
+                    Actor <ArrowUpDown size={12} />
+                  </div>
+                </th>
+                <th className="px-6 py-4">Details</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-base-200">
+              {loadingLogs ? (
+                [1, 2, 3, 4, 5].map(i => (
+                  <tr key={i} className="animate-pulse">
+                     <td colSpan={4} className="px-6 py-4"><div className="h-4 bg-base-200 rounded w-full"></div></td>
+                  </tr>
+                ))
+              ) : sortedLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-16 text-center">
+                    <div className="text-base-content/20 font-black text-3xl mb-2 italic">EMPTY_LOG</div>
+                    <span className="text-xs text-base-content/30 italic">No logs matched the selected criteria.</span>
+                  </td>
+                </tr>
+              ) : (
+                sortedLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-base-200/20 transition-colors">
+                    <td className="px-6 py-4 font-mono text-[10px] text-base-content/60">
+                      {new Date(log.created_at).toLocaleDateString()}<br/>
+                      {new Date(log.created_at).toLocaleTimeString()}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn("px-2 py-0.5 rounded text-[9px] font-black font-mono", getActionColor(log.action))}>
+                        {log.action}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-base-200 flex items-center justify-center">
+                           <User size={12} className="text-base-content/40" />
+                        </div>
+                        <span className="font-bold">{log.actor_id}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-base-content/70 font-semibold">{log.details || '-'}</div>
+                      <div className="text-[9px] text-base-content/35 font-mono mt-0.5">IP: {log.ip_address || 'Internal'}</div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Controls */}
+        {!loadingLogs && totalLogs > 0 && (
+          <div className="bg-base-100 p-4 border-t border-base-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+            <div className="text-base-content/50">
+              Showing {Math.min((currentPage - 1) * itemsPerPage + 1, totalLogs)} to {Math.min(currentPage * itemsPerPage, totalLogs)} of {totalLogs} entries
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <span className="text-base-content/40">Show</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
+                  className="bg-base-200 border-none rounded-lg px-2.5 py-1 outline-none font-bold text-xs cursor-pointer"
+                >
+                  {[5, 10, 20, 50].map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5 ml-4">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 bg-base-200 hover:bg-base-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-bold transition-colors cursor-pointer"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer",
+                      currentPage === p 
+                        ? "bg-primary text-primary-content shadow-md" 
+                        : "bg-base-200 hover:bg-base-300 text-base-content"
+                    )}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="px-3 py-1.5 bg-base-200 hover:bg-base-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-bold transition-colors cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
