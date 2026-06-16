@@ -1,0 +1,12 @@
+.env
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git
+.github
+.vscode
+node_modules/
+package-lock.json
+package.json
