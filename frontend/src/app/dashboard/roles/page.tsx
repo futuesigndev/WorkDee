@@ -17,7 +17,7 @@ import {
   ChevronDown
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { API_URL } from "@/lib/api"
+import { API_URL, apiFetch } from "@/lib/api"
 
 interface Role {
   id: string;
@@ -33,6 +33,7 @@ interface Menu {
   label: string;
   path: string;
   parent_id?: string;
+  order: number;
 }
 
 export default function RolesPermissionsPage() {
@@ -102,8 +103,8 @@ export default function RolesPermissionsPage() {
   const fetchData = async () => {
     try {
       const [rRes, mRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/roles`, { credentials: "include" }),
-        fetch(`${API_URL}/api/v1/roles/menus`, { credentials: "include" })
+        apiFetch(`${API_URL}/api/v1/roles`),
+        apiFetch(`${API_URL}/api/v1/roles/menus`)
       ])
       
       if (rRes.ok && mRes.ok) {
@@ -122,9 +123,7 @@ export default function RolesPermissionsPage() {
 
   const fetchPermissions = async (roleId: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/roles/${roleId}/permissions`, {
-        credentials: "include"
-      })
+      const res = await apiFetch(`${API_URL}/api/v1/roles/${roleId}/permissions`)
       if (res.ok) {
         const data = await res.json()
         setAllowedMenuIds(data.menu_ids || [])
@@ -173,11 +172,10 @@ export default function RolesPermissionsPage() {
     if (!selectedRole) return
     setSaving(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/roles/${selectedRole.id}/permissions`, {
+      const res = await apiFetch(`${API_URL}/api/v1/roles/${selectedRole.id}/permissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ menu_ids: allowedMenuIds }),
-        credentials: "include"
       })
       if (res.ok) {
         alert("Permissions saved successfully")
@@ -193,11 +191,10 @@ export default function RolesPermissionsPage() {
     if (!newRoleName.trim()) return
     setCreating(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/roles`, {
+      const res = await apiFetch(`${API_URL}/api/v1/roles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newRoleName, description: newRoleDesc }),
-        credentials: "include"
       })
       if (res.ok) {
         setShowCreateModal(false)
@@ -218,9 +215,8 @@ export default function RolesPermissionsPage() {
   const handleDeleteRole = async (roleId: string) => {
     setDeletingRole(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/roles/${roleId}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/roles/${roleId}`, {
         method: "DELETE",
-        credentials: "include"
       })
       if (res.ok) {
         setRoleToDelete(null)

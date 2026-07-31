@@ -13,7 +13,7 @@ import {
   ArrowUpRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { API_URL } from '@/lib/api'
+import { API_URL, apiFetch } from '@/lib/api'
 
 export default function DashboardOverview() {
   const [stats, setStats] = useState({
@@ -28,10 +28,10 @@ export default function DashboardOverview() {
     const fetchStats = async () => {
       try {
         const [u, r, l, lg] = await Promise.all([
-          fetch(`${API_URL}/api/v1/users`, { credentials: 'include' }),
-          fetch(`${API_URL}/api/v1/roles`, { credentials: 'include' }),
-          fetch(`${API_URL}/api/v1/line/pending`, { credentials: 'include' }),
-          fetch(`${API_URL}/api/v1/logs`, { credentials: 'include' })
+          apiFetch(`${API_URL}/api/v1/users`),
+          apiFetch(`${API_URL}/api/v1/roles`),
+          apiFetch(`${API_URL}/api/v1/line/pending`),
+          apiFetch(`${API_URL}/api/v1/logs`)
         ]);
         
         setStats({

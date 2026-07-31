@@ -7,7 +7,7 @@ import {
   Save, FolderTree, ChevronRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { API_URL } from "@/lib/api"
+import { API_URL, apiFetch } from "@/lib/api"
 
 // ── Available icons for selector ──────────────────────────────────────────────
 const AVAILABLE_ICONS = [
@@ -68,7 +68,7 @@ export default function MenuManagementPage() {
   // ── Fetch ────────────────────────────────────────────────────────────────
   const fetchMenus = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/menus`, { credentials: "include" })
+      const res = await apiFetch(`${API_URL}/api/v1/menus`)
       if (res.ok) setMenus(await res.json())
     } catch (e) {
       console.error(e)
@@ -141,10 +141,9 @@ export default function MenuManagementPage() {
         order: parseInt(form.order) || 0
       }
       if (form.parent_id) body.parent_id = form.parent_id
-      const res = await fetch(`${API_URL}/api/v1/menus`, {
+      const res = await apiFetch(`${API_URL}/api/v1/menus`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify(body)
       })
       if (res.ok) {
@@ -171,10 +170,9 @@ export default function MenuManagementPage() {
     if (!editMenu) return
     setSaving(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/menus/${editMenu.id}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/menus/${editMenu.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           label: editForm.label,
           path: editForm.path,
@@ -196,10 +194,9 @@ export default function MenuManagementPage() {
   // ── Toggle active ─────────────────────────────────────────────────────────
   const toggleActive = async (menu: Menu) => {
     try {
-      await fetch(`${API_URL}/api/v1/menus/${menu.id}`, {
+      await apiFetch(`${API_URL}/api/v1/menus/${menu.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ is_active: !menu.is_active })
       })
       fetchMenus()
@@ -211,9 +208,8 @@ export default function MenuManagementPage() {
     if (!menuToDelete) return
     setDeleting(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/menus/${menuToDelete.id}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/menus/${menuToDelete.id}`, {
         method: "DELETE",
-        credentials: "include"
       })
       if (res.ok) {
         showMsg("success", `"${menuToDelete.label}" deleted`)

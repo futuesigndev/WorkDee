@@ -20,7 +20,7 @@ import {
   ArrowUpDown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { API_URL } from '@/lib/api'
+import { API_URL, apiFetch } from '@/lib/api'
 
 // Helper for formatting duration
 const formatDuration = (minutes: number) => {
@@ -80,7 +80,7 @@ export default function LogsPage() {
         date_from: dateFrom,
         date_to: dateTo
       })
-      const res = await fetch(`${API_URL}/api/v1/logs?${params.toString()}`, { credentials: 'include' })
+      const res = await apiFetch(`${API_URL}/api/v1/logs?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         // If paginated response
@@ -106,7 +106,7 @@ export default function LogsPage() {
         date_from: dateFrom,
         date_to: dateTo
       })
-      const res = await fetch(`${API_URL}/api/v1/logs/summary?${params.toString()}`, { credentials: 'include' })
+      const res = await apiFetch(`${API_URL}/api/v1/logs/summary?${params.toString()}`)
       if (res.ok) {
         setSummary(await res.json())
       }
@@ -126,7 +126,7 @@ export default function LogsPage() {
         date_from: dateFrom,
         date_to: dateTo
       })
-      const res = await fetch(`${API_URL}/api/v1/logs/sessions?${params.toString()}`, { credentials: 'include' })
+      const res = await apiFetch(`${API_URL}/api/v1/logs/sessions?${params.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setSessions(data.sessions || [])

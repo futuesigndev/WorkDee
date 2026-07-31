@@ -27,7 +27,7 @@ import {
   Home
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { API_URL } from '@/lib/api'
+import { API_URL, apiFetch } from '@/lib/api'
 
 // Icon mapping to handle dynamic strings from DB
 const IconMap: Record<string, any> = {
@@ -57,6 +57,7 @@ interface MenuItem {
   icon: string;
   parent_id: string | null;
   order: number;
+  children?: MenuItem[];
 }
 
 export default function DashboardLayout({
@@ -67,9 +68,7 @@ export default function DashboardLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
-    'settings': true // Default open System Settings as requested
-  })
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
@@ -86,13 +85,11 @@ export default function DashboardLayout({
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Fetch dynamic menus
+  // Fetch dynamic menus — apiFetch auto-redirects to /login on 401
   useEffect(() => {
     const fetchMenus = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/auth/me/menus`, {
-          credentials: 'include'
-        });
+        const res = await apiFetch(`${API_URL}/api/v1/auth/me/menus`);
         if (res.ok) {
           const data = await res.json();
           setMenuItems(data);
@@ -106,20 +103,36 @@ export default function DashboardLayout({
     fetchMenus();
   }, []);
 
+  // Periodic session heartbeat — ตรวจ session ทุก 2 นาที
+  // ถ้า token หมดอายุระหว่างใช้งาน จะ redirect ทันที ไม่รอให้ user กดอะไร
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        await apiFetch(`${API_URL}/api/v1/auth/me`);
+      } catch {
+        // network error — ignore, ไม่ redirect (อาจแค่ offline ชั่วคราว)
+      }
+    };
+    const interval = setInterval(checkSession, 2 * 60 * 1000); // 2 minutes
+    return () => clearInterval(interval);
+  }, []);
+
   const toggleExpand = (key: string) => {
-    setExpandedMenus(prev => ({ ...prev, [key]: !prev[key] }))
+    setExpandedMenus(prev => {
+      // Exclusive accordion: close all others, toggle the clicked one
+      const isCurrentlyOpen = prev[key]
+      return isCurrentlyOpen ? {} : { [key]: true }
+    })
   }
 
   const handleLogout = async () => {
     try {
-      await fetch(`${API_URL}/api/v1/auth/logout`, { 
-        method: 'POST',
-        credentials: 'include'
-      })
-      router.push('/login')
-      router.refresh()
+      await apiFetch(`${API_URL}/api/v1/auth/logout`, { method: 'POST' })
     } catch (error) {
       console.error('Logout failed', error)
+    } finally {
+      // Hard redirect ล้าง state ทั้งหมดให้สะอาด
+      window.location.replace('/login')
     }
   }
 

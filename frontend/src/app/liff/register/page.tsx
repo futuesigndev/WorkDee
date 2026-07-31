@@ -264,7 +264,7 @@ export default function LiffRegisterPage() {
               <div className="px-6 py-8 text-center space-y-4">
                 <p className="text-sm text-base-content/60 leading-relaxed">{errorMsg}</p>
                 <button
-                  onClick={() => { setStage("loading"); setErrorMsg(""); initLiff() }}
+                  onClick={() => { setStage("loading"); setErrorMsg(""); setLiffReady(false); setTimeout(() => setLiffReady(true), 0) }}
                   className="px-6 py-2.5 bg-base-200 hover:bg-base-300 text-sm font-bold rounded-xl transition-all"
                 >
                   ลองใหม่อีกครั้ง

@@ -21,7 +21,7 @@ import {
   QrCode
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { API_URL } from '@/lib/api'
+import { API_URL, apiFetch } from '@/lib/api'
 
 export default function LineApprovalPage() {
   const [activeTab, setActiveTab] = useState<'qrcode' | 'pending' | 'approved'>('pending')
@@ -89,7 +89,7 @@ export default function LineApprovalPage() {
   const fetchPendingBindings = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/line/pending`, { credentials: 'include' })
+      const res = await apiFetch(`${API_URL}/api/v1/line/pending`)
       if (res.ok) {
         setPendingBindings(await res.json())
       }
@@ -112,7 +112,7 @@ export default function LineApprovalPage() {
         page: currentPage.toString(),
         page_size: itemsPerPage.toString()
       })
-      const res = await fetch(`${API_URL}/api/v1/line/approved?${queryParams.toString()}`, { credentials: 'include' })
+      const res = await apiFetch(`${API_URL}/api/v1/line/approved?${queryParams.toString()}`)
       if (res.ok) {
         const data = await res.json()
         setApprovedBindings(data.items || [])
@@ -144,7 +144,7 @@ export default function LineApprovalPage() {
     const delay = setTimeout(async () => {
       setSearchingUsers(true)
       try {
-        const res = await fetch(`${API_URL}/api/v1/users?search=${encodeURIComponent(searchUserQuery)}`, { credentials: 'include' })
+        const res = await apiFetch(`${API_URL}/api/v1/users?search=${encodeURIComponent(searchUserQuery)}`)
         if (res.ok) {
           const data = await res.json()
           setUserResults(data || [])
@@ -178,11 +178,10 @@ export default function LineApprovalPage() {
     const payload = repairedUser ? { employee_id: repairedUser.employee_id } : {}
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/line/approve/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/line/approve/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        credentials: 'include'
       })
       
       if (res.ok) {
@@ -209,9 +208,8 @@ export default function LineApprovalPage() {
     if (!confirm('Are you sure you want to reject this request?')) return
     setProcessing(id)
     try {
-      const res = await fetch(`${API_URL}/api/v1/line/reject/${id}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/line/reject/${id}`, {
         method: 'POST',
-        credentials: 'include'
       })
       if (res.ok) {
         showNotification('success', 'LINE Request rejected')
@@ -231,11 +229,10 @@ export default function LineApprovalPage() {
     if (!revokeReason.trim() || !revokingBinding) return
     setSubmittingRevoke(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/line/revoke/${revokingBinding.id}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/line/revoke/${revokingBinding.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: revokeReason }),
-        credentials: 'include'
       })
       if (res.ok) {
         showNotification('success', 'LINE Binding revoked successfully')

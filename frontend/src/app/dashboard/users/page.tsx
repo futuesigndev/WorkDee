@@ -17,7 +17,7 @@ import {
   ChevronDown
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { API_URL } from "@/lib/api"
+import { API_URL, apiFetch } from "@/lib/api"
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([])
@@ -46,7 +46,7 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/users`, { credentials: "include" })
+      const res = await apiFetch(`${API_URL}/api/v1/users`)
       if (res.ok) setUsers(await res.json())
     } catch (err) {
       console.error(err)
@@ -57,7 +57,7 @@ export default function UsersPage() {
 
   const fetchRoles = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/roles`, { credentials: "include" })
+      const res = await apiFetch(`${API_URL}/api/v1/roles`)
       if (res.ok) setRoles(await res.json())
     } catch (err) {
       console.error(err)
@@ -78,7 +78,7 @@ export default function UsersPage() {
     const delay = setTimeout(async () => {
       setSearchingEmp(true)
       try {
-        const res = await fetch(`${API_URL}/api/v1/users/search-employees?q=${encodeURIComponent(searchEmpQuery)}`, { credentials: "include" })
+        const res = await apiFetch(`${API_URL}/api/v1/users/search-employees?q=${encodeURIComponent(searchEmpQuery)}`)
         if (res.ok) {
           const data = await res.json()
           setEmpResults(data.items || [])
@@ -96,11 +96,10 @@ export default function UsersPage() {
     if (!selectedEmployee) return
     setIsProvisioning(true)
     try {
-      const res = await fetch(`${API_URL}/api/v1/users/provision`, {
+      const res = await apiFetch(`${API_URL}/api/v1/users/provision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ employee_id: selectedEmployee.employee_id, role_name: selectedRoleName }),
-        credentials: "include"
       })
       if (res.ok) {
         setShowProvisionModal(false)
@@ -122,9 +121,8 @@ export default function UsersPage() {
     if (!employeeId) return
     setDeletingId(employeeId)
     try {
-      const res = await fetch(`${API_URL}/api/v1/users/${employeeId}`, {
+      const res = await apiFetch(`${API_URL}/api/v1/users/${employeeId}`, {
         method: "DELETE",
-        credentials: "include"
       })
       if (res.ok) {
         setUserToDelete(null)
@@ -143,11 +141,10 @@ export default function UsersPage() {
 
   const toggleUserStatus = async (employeeId: string, currentStatus: boolean) => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/users/${employeeId}/status`, {
+      const res = await apiFetch(`${API_URL}/api/v1/users/${employeeId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active: !currentStatus }),
-        credentials: "include"
       })
       if (res.ok) {
         fetchUsers()
@@ -162,11 +159,10 @@ export default function UsersPage() {
 
   const changeUserRole = async (employeeId: string, roleId: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/users/${employeeId}/role`, {
+      const res = await apiFetch(`${API_URL}/api/v1/users/${employeeId}/role`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role_id: roleId }),
-        credentials: "include"
       })
       if (res.ok) {
         fetchUsers()

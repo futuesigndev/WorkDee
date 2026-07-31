@@ -1,12 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { User, Lock, Loader2, AlertCircle, ArrowRight, Shield } from "lucide-react";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { User, Lock, Loader2, AlertCircle, ArrowRight, Shield, Clock } from "lucide-react";
 import { API_URL } from "@/lib/api";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isExpired = searchParams.get('expired') === '1';
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -110,6 +120,12 @@ export default function LoginPage() {
             </div>
 
             <form onSubmit={handleLogin} className="space-y-8">
+              {isExpired && (
+                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 p-4 rounded-2xl flex items-center gap-3 text-sm font-bold animate-in fade-in duration-500">
+                  <Clock size={18} className="shrink-0" />
+                  <span>Session หมดอายุแล้ว กรุณา Sign In ใหม่อีกครั้ง</span>
+                </div>
+              )}
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 text-red-600 p-5 rounded-3xl flex items-center gap-4 text-sm font-black animate-in shake duration-500">
                   <AlertCircle size={24} />
@@ -146,7 +162,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="block w-full pl-16 pr-6 py-5 bg-base-100 border-2 border-base-content/5 rounded-3xl text-base-content placeholder:text-base-content/20 focus:border-primary focus:ring-8 focus:ring-primary/5 outline-none transition-all font-black text-lg shadow-sm"
-                    placeholder="��������"
+                    placeholder="Enter your password"
                   />
                 </div>
               </div>

@@ -1,0 +1,10 @@
+.env
+.env*.local
+node_modules/
+.next/
+out/
+build/
+.git
+.github
+.vscode
+npm-debug.log

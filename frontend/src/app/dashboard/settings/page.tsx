@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react"
 import { Save, Palette, Globe, Shield, Loader2, CheckCircle2, AlertCircle, Type, ImageIcon, Layout, Eye, EyeOff, Key } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { API_URL } from "@/lib/api"
+import { API_URL, apiFetch } from "@/lib/api"
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -41,9 +41,7 @@ export default function SettingsPage() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/settings/admin`, {
-        credentials: "include"
-      })
+      const res = await apiFetch(`${API_URL}/api/v1/settings/admin`)
       if (res.ok) {
         const data = await res.json()
         // Normalize null → "" for controlled inputs
@@ -72,10 +70,9 @@ export default function SettingsPage() {
     setMessage({ type: "", text: "" })
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/settings/admin`, {
+      const res = await apiFetch(`${API_URL}/api/v1/settings/admin`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify(settings)
       })
 
