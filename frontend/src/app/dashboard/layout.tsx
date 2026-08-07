@@ -27,7 +27,7 @@ import {
   Home
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { API_URL, apiFetch } from '@/lib/api'
+import { API_URL, apiFetch, SessionExpiredError } from '@/lib/api'
 
 // Icon mapping to handle dynamic strings from DB
 const IconMap: Record<string, any> = {
@@ -95,7 +95,9 @@ export default function DashboardLayout({
           setMenuItems(data);
         }
       } catch (err) {
-        console.error('Failed to load menus', err);
+        if (!(err instanceof SessionExpiredError)) {
+          console.error('Failed to load menus', err);
+        }
       } finally {
         setLoading(false)
       }
@@ -109,7 +111,8 @@ export default function DashboardLayout({
     const checkSession = async () => {
       try {
         await apiFetch(`${API_URL}/api/v1/auth/me`);
-      } catch {
+      } catch (err) {
+        if (err instanceof SessionExpiredError) return; // redirect already in progress
         // network error — ignore, ไม่ redirect (อาจแค่ offline ชั่วคราว)
       }
     };

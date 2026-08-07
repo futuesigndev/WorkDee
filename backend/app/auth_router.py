@@ -31,17 +31,29 @@ async def login(
         user = result.scalar_one_or_none()
         
         if not user:
-            # Check if we have a default role, if not create 'Admin' for the first user
+            # Check if this is the very first user in the system (bootstrap mode)
+            user_count_stmt = select(LocalUser)
+            user_count_result = await db.execute(user_count_stmt)
+            existing_users = user_count_result.scalars().all()
+
+            if existing_users:
+                # System already has users → only provisioned employees may login
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied. Your account has not been provisioned. Please contact an administrator."
+                )
+
+            # No users exist yet → bootstrap: first login becomes Admin
             role_stmt = select(LocalRole).where(LocalRole.name == "Admin")
             role_result = await db.execute(role_stmt)
             default_role = role_result.scalar_one_or_none()
-            
+
             if not default_role:
                 default_role = LocalRole(name="Admin", is_system_role=True)
                 db.add(default_role)
-                await db.flush() # Get ID
-            
-            # Create Local User automatically from Core-API data
+                await db.flush()  # Get ID
+
+            # Create the first Admin user
             user = LocalUser(
                 employee_id=core_data["user"]["employee_id"],
                 full_name=core_data["user"]["full_name"],
@@ -100,6 +112,8 @@ async def login(
         
         return {"message": "Login successful", "user": core_data["user"]}
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 

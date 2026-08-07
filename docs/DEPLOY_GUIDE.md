@@ -275,10 +275,10 @@ docker compose down -v
 services:
   backend:
     ports:
-      - "9011:8011"   # เปลี่ยน backend ให้เข้าถึงจากภายนอกที่ port 9011
+      - "9011:8000"   # เปลี่ยน backend ให้เข้าถึงจากภายนอกที่ port 9011 (ภายใน container ยังเป็น 8000)
   frontend:
     ports:
-      - "80:3011"     # เปลี่ยน frontend ให้เข้าถึงที่ port 80 (HTTP standard)
+      - "80:3000"     # เปลี่ยน frontend ให้เข้าถึงที่ port 80 (HTTP standard)
   db:
     ports:
       - "5433:5432"   # เปลี่ยน DB port ภายนอกเป็น 5433 (เพื่อไม่ชนกับ DB อื่น)
@@ -288,7 +288,7 @@ services:
 
 ถ้าต้องการรัน backend บน port อื่นใน container ด้วย ต้องแก้ 3 ที่:
 
-**ตัวอย่าง: เปลี่ยน Backend จาก 8011 → 8080**
+**ตัวอย่าง: เปลี่ยน Backend จาก 8000 → 8080**
 
 **1. `backend/Dockerfile`:**
 ```dockerfile
@@ -334,10 +334,10 @@ POSTGRES_DB=corptemp_db
 services:
   backend:
     ports:
-      - "${BACKEND_PORT:-8011}:8011"
+      - "${BACKEND_PORT:-8011}:8000"
   frontend:
     ports:
-      - "${FRONTEND_PORT:-3011}:3011"
+      - "${FRONTEND_PORT:-3011}:3000"
     build:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8011}

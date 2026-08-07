@@ -93,6 +93,45 @@ corp-temp/
 
 ---
 
+## 📋 How to Use as Template (การนำไปใช้งานเพื่อเริ่มโปรเจกต์ใหม่)
+
+โปรเจกต์นี้ถูกดีไซน์มาเพื่อเป็น **Master Template** สำหรับเริ่มต้นโปรเจกต์อื่นๆ ในระบบนิเวศ FutureSign ได้อย่างรวดเร็ว โดยขั้นตอนในการโคลนและตั้งค่าโปรเจกต์ใหม่ มีดังนี้:
+
+### 1. โคลนและล้างประวัติ Git เดิม (Git Clean Start)
+โคลนโปรเจกต์นี้ไปยังโฟลเดอร์ใหม่ และทำการเคลียร์ประวัติ Git เพื่อเริ่มสร้าง Repository ใหม่ของโปรเจกต์คุณเอง:
+```bash
+# 1. โคลนโปรเจกต์ไปยังโฟลเดอร์โปรเจกต์ใหม่ของคุณ
+git clone <this-template-repo-url> new-project-name
+cd new-project-name
+
+# 2. ล้างโฟลเดอร์ .git เดิมออก (สำหรับ Windows)
+Remove-Item -Recurse -Force .git
+# หรือสำหรับ macOS/Linux
+# rm -rf .git
+
+# 3. เริ่มต้นนับประวัติ Git ใหม่ของโปรเจกต์คุณเอง
+git init
+git add .
+git commit -m "Initial commit from FutureSign Master Template"
+```
+
+### 2. ตั้งค่าไฟล์ Environment ของคุณเอง
+เนื่องจากความลับและ API Key ต่างๆ จะถูกละเว้นไม่บันทึกขึ้น Git ให้ผู้พัฒนาทำการตั้งค่าไฟล์สำหรับโปรเจกต์ใหม่ดังนี้:
+1. ก๊อปปี้ไฟล์ตัวอย่างหลังบ้านและหน้าบ้าน:
+   * หลังบ้าน: `cp backend/.env.example backend/.env`
+   * หน้าบ้าน: `cp frontend/.env.local.example frontend/.env.local`
+2. สร้าง JWT `SECRET_KEY` ใหม่สำหรับหลังบ้านใน `backend/.env` โดยรันคำสั่ง:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+3. กำหนดข้อมูลการเชื่อมต่อฐานข้อมูล (`DATABASE_URL`), `CORE_API_KEY` (SSO Key) และโดเมนสำหรับโปรเจกต์ตัวเอง
+
+### 3. เปลี่ยนชื่อแอปและแบรนดิ้ง (App Rename & Branding)
+* **หน้าบ้าน (Client-side):** กำหนดชื่อแอปใหม่ในไฟล์ `frontend/.env.local` ผ่านคีย์ `NEXT_PUBLIC_APP_NAME`
+* **ระบบโดยรวม (Database):** สามารถปรับชื่อแอป โลโก้ และข้อความหน้าบ้าน รวมถึงสิทธิ์เมนูหลัก ได้จากหน้าจอ Admin Settings Dashboard (เมื่อล็อกอินใช้งานเป็น Admin สำเร็จแล้ว)
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites

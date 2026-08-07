@@ -45,7 +45,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-corptemp_user}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-corptemp_db}
       REDIS_URL: redis://redis:6379/0
     ports:
-      - "8011:8011"
+      - "${BACKEND_PORT:-8011}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -62,7 +62,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8011}
     restart: unless-stopped
     ports:
-      - "3011:3011"
+      - "${FRONTEND_PORT:-3011}:3000"
     depends_on:
       - backend
 
