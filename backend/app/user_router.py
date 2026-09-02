@@ -45,7 +45,8 @@ async def list_users(
     skip: int = 0,
     limit: int = 100,
     search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id)
 ):
     query = select(LocalUser, LocalRole.name.label("role_name")).join(
         LocalRole, LocalUser.role_id == LocalRole.id
