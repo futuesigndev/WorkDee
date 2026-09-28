@@ -7,7 +7,8 @@ import {
   Users, 
   Settings, 
   LogOut, 
-  Menu, 
+  PanelLeftClose,
+  PanelLeftOpen,
   X,
   Bell,
   ShieldCheck,
@@ -61,6 +62,28 @@ interface MenuItem {
   children?: MenuItem[];
 }
 
+const SIDEBAR_PREF_KEY = 'dashboard-sidebar-open'
+
+/**
+ * Saved desktop sidebar preference. Anything other than an explicit "false" means expanded, so a
+ * first-time visitor (nothing stored) gets the default expanded sidebar.
+ */
+function readSidebarPref(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_PREF_KEY) !== 'false'
+  } catch {
+    return true // storage unavailable (private mode / disabled) — just don't persist
+  }
+}
+
+function writeSidebarPref(open: boolean): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_PREF_KEY, String(open))
+  } catch {
+    // storage unavailable — the toggle still works for this session, it just isn't remembered
+  }
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -75,17 +98,28 @@ export default function DashboardLayout({
   const router = useRouter()
   const pathname = usePathname()
 
-  // Responsive check
+  // Responsive check. Also restores the saved desktop preference — localStorage can only be read
+  // client-side, so this has to live in an effect (never during render) to avoid a server/client
+  // hydration mismatch.
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024)
-      if (window.innerWidth < 1024) setIsSidebarOpen(false)
-      else setIsSidebarOpen(true)
+      const mobile = window.innerWidth < 1024
+      setIsMobile(mobile)
+      // Mobile keeps its existing slide-in behaviour: it always starts closed.
+      setIsSidebarOpen(mobile ? false : readSidebarPref())
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
+
+  // Collapse/expand the sidebar. Only the desktop preference is persisted — mobile always starts
+  // closed, so remembering a state there would be meaningless.
+  const toggleSidebar = () => {
+    const next = !isSidebarOpen
+    setIsSidebarOpen(next)
+    if (!isMobile) writeSidebarPref(next)
+  }
 
   // Fetch dynamic menus — apiFetch auto-redirects to /login on 401
   useEffect(() => {
@@ -135,10 +169,13 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-base-200 flex text-base-content selection:bg-primary selection:text-primary-content">
       {/* Sidebar */}
-      <aside 
+      <aside
+        id="dashboard-sidebar"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-base-100 border-r border-base-200 transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 shadow-xl lg:shadow-none",
-          !isSidebarOpen && "-translate-x-full"
+          "fixed inset-y-0 left-0 z-50 w-64 bg-base-100 border-r border-base-200 transition-transform duration-300 ease-in-out lg:static lg:inset-0 shadow-xl lg:shadow-none",
+          // Mobile: slide out of view (existing behaviour). Desktop: drop the sidebar out of the
+          // flex row entirely so <main> reclaims the full width.
+          isSidebarOpen ? "lg:translate-x-0" : "-translate-x-full lg:hidden"
         )}
       >
         <div className="h-full flex flex-col">
@@ -258,11 +295,16 @@ export default function DashboardLayout({
         {/* Top Header */}
         <header className="h-16 bg-base-100/40 backdrop-blur-xl border-b border-base-200 flex items-center justify-between px-6 sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            {isMobile && (
-              <button onClick={() => setIsSidebarOpen(true)} className="w-9 h-9 flex items-center justify-center bg-base-200 rounded-lg">
-                <Menu size={18} />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              aria-expanded={isSidebarOpen}
+              aria-controls="dashboard-sidebar"
+              className="w-9 h-9 flex items-center justify-center bg-base-200 rounded-lg hover:bg-base-300 transition-colors"
+            >
+              {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+            </button>
             <div className="flex flex-col">
               <span className="text-[9px] font-black uppercase tracking-widest text-primary/60">Current View</span>
               <h2 className="text-lg font-black text-base-content tracking-tight">
