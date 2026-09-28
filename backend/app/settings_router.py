@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.config import settings as app_settings
 
-from app.dependencies import get_current_user_id
+from app.dependencies import require_permission
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -38,7 +38,10 @@ class AppSettingsSchema(BaseModel):
         from_attributes = True
 
 @router.get("", response_model=AppSettingsSchema)
-async def get_settings(db: AsyncSession = Depends(get_db)):
+async def get_settings(
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("settings"))
+):
     stmt = select(AppSettings).limit(1)
     result = await db.execute(stmt)
     settings = result.scalar_one_or_none()
@@ -62,7 +65,8 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
 async def update_settings(
     settings_data: AppSettingsSchema,
     response: Response,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("settings"))
 ):
     stmt = select(AppSettings).limit(1)
     result = await db.execute(stmt)
@@ -96,7 +100,7 @@ async def update_settings(
 @router.get("/admin", response_model=AdminAppSettingsSchema)
 async def get_admin_settings(
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    _current_user = Depends(require_permission("settings"))
 ):
     stmt = select(AppSettings).limit(1)
     result = await db.execute(stmt)
@@ -116,7 +120,7 @@ async def update_admin_settings(
     settings_data: AdminAppSettingsSchema,
     response: Response,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    _current_user = Depends(require_permission("settings"))
 ):
     stmt = select(AppSettings).limit(1)
     result = await db.execute(stmt)

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, text
 from app.database import get_db
 from app.models import AuditLog, LocalUser
-from app.dependencies import get_current_user_id
+from app.dependencies import require_permission
 from datetime import datetime, time, timedelta
 from collections import defaultdict
 import random
@@ -42,7 +42,7 @@ async def get_logs(
     date_from: str | None = None,
     date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    _current_user = Depends(require_permission("logs"))
 ):
     try:
         stmt = select(AuditLog)
@@ -103,7 +103,7 @@ async def get_logs_summary(
     date_from: str | None = None,
     date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    _current_user = Depends(require_permission("logs"))
 ):
     try:
         today_start = datetime.combine(datetime.utcnow().date(), time.min)
@@ -188,7 +188,7 @@ async def get_logs_sessions(
     date_from: str | None = None,
     date_to: str | None = None,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    _current_user = Depends(require_permission("logs"))
 ):
     try:
         dt_from, dt_to = parse_date_range(date_from, date_to)

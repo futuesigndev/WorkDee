@@ -19,7 +19,7 @@ async def get_current_user_id(access_token: str = Cookie(None)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return employee_id
 
-async def require_permission(menu_key: str):
+def require_permission(menu_key: str):
     async def permission_checker(
         employee_id: str = Depends(get_current_user_id),
         db: AsyncSession = Depends(get_db)

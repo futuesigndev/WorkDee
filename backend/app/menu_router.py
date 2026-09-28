@@ -4,6 +4,7 @@ from sqlalchemy import select, delete
 from typing import List, Optional
 from app.database import get_db
 from app.models import LocalMenu, RoleMenuPermission, LocalRole
+from app.dependencies import require_permission
 from pydantic import BaseModel
 import uuid
 
@@ -42,7 +43,10 @@ class MenuUpdateRequest(BaseModel):
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=List[MenuResponse])
-async def list_menus(db: AsyncSession = Depends(get_db)):
+async def list_menus(
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("menus"))
+):
     """Return all menus ordered by order field."""
     result = await db.execute(select(LocalMenu).order_by(LocalMenu.order))
     return result.scalars().all()
@@ -51,7 +55,8 @@ async def list_menus(db: AsyncSession = Depends(get_db)):
 @router.post("", response_model=MenuResponse, status_code=201)
 async def create_menu(
     payload: MenuCreateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("menus"))
 ):
     """Create a new menu and auto-grant access to Admin role."""
     # Check key uniqueness
@@ -102,7 +107,8 @@ async def create_menu(
 async def update_menu(
     menu_id: uuid.UUID,
     payload: MenuUpdateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("menus"))
 ):
     """Update menu properties."""
     menu = (await db.execute(
@@ -130,7 +136,8 @@ async def update_menu(
 @router.delete("/{menu_id}")
 async def delete_menu(
     menu_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("menus"))
 ):
     """Delete a menu and its associated role permissions."""
     menu = (await db.execute(

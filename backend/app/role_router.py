@@ -4,6 +4,7 @@ from sqlalchemy import select, delete
 from typing import List, Optional
 from app.database import get_db
 from app.models import LocalRole, LocalMenu, RoleMenuPermission
+from app.dependencies import require_permission
 from pydantic import BaseModel
 import uuid
 
@@ -35,17 +36,27 @@ class PermissionUpdate(BaseModel):
     menu_ids: List[uuid.UUID]
 
 @router.get("", response_model=List[RoleResponse])
-async def list_roles(db: AsyncSession = Depends(get_db)):
+async def list_roles(
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
+):
     result = await db.execute(select(LocalRole).order_by(LocalRole.name))
     return result.scalars().all()
 
 @router.get("/menus", response_model=List[MenuResponse])
-async def list_all_menus(db: AsyncSession = Depends(get_db)):
+async def list_all_menus(
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
+):
     result = await db.execute(select(LocalMenu).order_by(LocalMenu.order))
     return result.scalars().all()
 
 @router.get("/{role_id}/permissions")
-async def get_role_permissions(role_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_role_permissions(
+    role_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
+):
     # Get all menu IDs that this role can access
     stmt = select(RoleMenuPermission.menu_id).where(
         RoleMenuPermission.role_id == role_id,
@@ -58,7 +69,8 @@ async def get_role_permissions(role_id: uuid.UUID, db: AsyncSession = Depends(ge
 async def update_role_permissions(
     role_id: uuid.UUID, 
     payload: PermissionUpdate, 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
 ):
     # 1. Clear existing permissions for this role
     await db.execute(delete(RoleMenuPermission).where(RoleMenuPermission.role_id == role_id))
@@ -86,7 +98,8 @@ class RoleUpdateRequest(BaseModel):
 @router.post("", response_model=RoleResponse, status_code=201)
 async def create_role(
     payload: RoleCreateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
 ):
     # Check if role name already exists
     stmt = select(LocalRole).where(LocalRole.name == payload.name)
@@ -108,7 +121,8 @@ async def create_role(
 async def update_role(
     role_id: uuid.UUID,
     payload: RoleUpdateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
 ):
     stmt = select(LocalRole).where(LocalRole.id == role_id)
     role = (await db.execute(stmt)).scalar_one_or_none()
@@ -137,7 +151,8 @@ async def update_role(
 @router.delete("/{role_id}")
 async def delete_role(
     role_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _current_user = Depends(require_permission("roles"))
 ):
     stmt = select(LocalRole).where(LocalRole.id == role_id)
     role = (await db.execute(stmt)).scalar_one_or_none()
