@@ -1,7 +1,7 @@
 // ในฝั่ง Browser (Client-side) เราใช้ relative path เพื่อส่งคำขอผ่าน Next.js Proxy
 // ป้องกันปัญหา Mixed Content (HTTPS -> HTTP) และ CORS เมื่อเปิดในมือถือผ่าน ngrok
 const isBrowser = typeof window !== 'undefined';
-export const API_URL = isBrowser ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8011");
+export const API_URL = isBrowser ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8012");
 
 // Backend refresh endpoint (via the Next.js rewrite when running in the browser).
 const REFRESH_PATH = `${API_URL}/api/v1/auth/refresh`;

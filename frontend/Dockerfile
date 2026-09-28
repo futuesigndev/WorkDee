@@ -16,7 +16,7 @@ COPY . .
 
 # Build Next.js app
 # Pass build-time env vars here if needed (non-secret ones only)
-ARG NEXT_PUBLIC_API_URL=http://localhost:8011
+ARG NEXT_PUBLIC_API_URL=http://localhost:8012
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
