@@ -204,12 +204,18 @@ npm run dev
 
 ### 6.1 เตรียม Environment Files
 
+> [!IMPORTANT]
+> `POSTGRES_PASSWORD` **ไม่มีค่า default แล้ว** — ถ้าไม่กำหนด `docker compose up` จะหยุดทันทีพร้อม error
+> `POSTGRES_PASSWORD must be set` เพื่อกันไม่ให้หลุดไปใช้รหัสอ่อน ๆ บน production
+> (กำหนดผ่าน root `.env` หรือ environment variable — ตัวอย่างดู §7.3)
+
 ```bash
-# Backend
+# 1. Root .env — จำเป็นสำหรับ docker-compose interpolation (ต้องมี POSTGRES_PASSWORD)
+# 2. Backend
 cp backend/.env.example backend/.env
 # แก้ไขค่า DATABASE_URL, CORE_API_KEY, SECRET_KEY, CORS_ORIGINS
 
-# Frontend (ถ้าต้องการ override)
+# 3. Frontend (ถ้าต้องการ override)
 cp frontend/.env.local.example frontend/.env.local
 # แก้ไข NEXT_PUBLIC_API_URL ให้ชี้ไป public URL ของ backend
 ```
@@ -349,7 +355,9 @@ docker compose --env-file .env up -d --build
 ```
 
 > [!NOTE]
-> ไฟล์ `.env` ที่ root นี้แตกต่างจาก `backend/.env` — ไม่ควรใส่ DB credentials ซ้ำซ้อนกัน ใช้สำหรับ port/URL configuration เท่านั้น
+> ไฟล์ `.env` ที่ root นี้แตกต่างจาก `backend/.env` — ใช้สำหรับ `docker-compose.yml` interpolation
+> (ports / public URL) **และ `POSTGRES_PASSWORD` ซึ่งจำเป็น** เพราะ compose ไม่มีค่า default ให้แล้ว
+> ส่วน `DATABASE_URL` ที่ backend ใช้จริงยังตั้งใน `backend/.env` ตามเดิม
 
 ---
 

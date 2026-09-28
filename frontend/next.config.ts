@@ -14,10 +14,17 @@ if (liffApiUrl) {
 }
 
 
+// The ngrok browser-warning bypass header exists only to make local ngrok tunnels usable.
+// `next dev` runs with NODE_ENV=development; production builds run as "production".
+const isDevelopment = process.env.NODE_ENV !== "production";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   allowedDevOrigins: allowedOrigins,
   async headers() {
+    if (!isDevelopment) {
+      return [];
+    }
     return [
       {
         source: "/:path*",

@@ -64,10 +64,13 @@ async def startup_event():
         await seed_data(db)
 
 # Setup ngrok warning bypass header middleware
+# Only sent in development (settings.APP_ENV) — it exists purely so a local ngrok tunnel
+# skips its browser-warning page; a deployed environment must not send it.
 @app.middleware("http")
 async def add_ngrok_skip_browser_warning_header(request, call_next):
     response = await call_next(request)
-    response.headers["ngrok-skip-browser-warning"] = "true"
+    if settings.APP_ENV == "development":
+        response.headers["ngrok-skip-browser-warning"] = "true"
     return response
 
 # Setup CORS — origins อ่านจาก settings (มาจาก .env)

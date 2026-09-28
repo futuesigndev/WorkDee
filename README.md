@@ -145,18 +145,22 @@ git commit -m "Initial commit from FutureSign Master Template"
 git clone <your-repo-url>
 cd corp-temp
 
-# 2. ตั้งค่า Backend environment
+# 2. ตั้งค่า root .env สำหรับ docker-compose (จำเป็น)
+#    POSTGRES_PASSWORD ไม่มีค่า default — ต้องกำหนดเอง ไม่เช่นนั้น `docker compose up` จะ error ทันที
+#    (ดูตัวอย่างไฟล์ root .env ที่ docs/DEPLOY_GUIDE.md §7.3)
+
+# 3. ตั้งค่า Backend environment
 cp backend/.env.example backend/.env
 # แก้ไข backend/.env: DATABASE_URL, CORE_API_KEY, SECRET_KEY, CORS_ORIGINS
 
-# 3. ตั้งค่า Frontend environment (optional)
+# 4. ตั้งค่า Frontend environment (optional)
 cp frontend/.env.local.example frontend/.env.local
 # แก้ไข NEXT_PUBLIC_API_URL ถ้าต้องการ override
 
-# 4. Build และ Start
+# 5. Build และ Start
 docker compose up -d --build
 
-# 5. ตรวจสอบ
+# 6. ตรวจสอบ
 docker compose ps
 docker compose logs -f
 ```

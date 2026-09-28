@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False       # False = dev (HTTP), True = prod (HTTPS)
     COOKIE_SAMESITE: str = "lax"
 
+    # Environment name. "development" keeps local-tunnel conveniences enabled (currently the
+    # ngrok-skip-browser-warning response header); any other value turns them off.
+    APP_ENV: str = "development"
+
     # Token TTL (วินาที)
     ACCESS_TOKEN_EXPIRE_SECONDS: int = 900       # 15 นาที
     REFRESH_TOKEN_EXPIRE_SECONDS: int = 604800   # 7 วัน

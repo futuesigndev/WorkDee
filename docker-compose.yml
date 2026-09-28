@@ -7,7 +7,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-corptemp_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      # No default on purpose — compose must fail loudly rather than silently use a weak password.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see docs/DEPLOY_GUIDE.md section 6.1)}"
       POSTGRES_DB: ${POSTGRES_DB:-corptemp_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -42,7 +43,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-corptemp_user}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-corptemp_db}
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-corptemp_user}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-corptemp_db}"
       REDIS_URL: redis://redis:6379/0
     ports:
       - "${BACKEND_PORT:-8011}:8000"

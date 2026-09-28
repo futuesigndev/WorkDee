@@ -132,7 +132,9 @@ async def login(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        # Log the real cause server-side; never return raw exception text to the client.
+        print(f"Login failed: {e}")
+        raise HTTPException(status_code=401, detail="Login failed")
 
 @router.get("/me/menus")
 async def get_user_menus(
