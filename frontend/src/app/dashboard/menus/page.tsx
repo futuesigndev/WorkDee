@@ -8,6 +8,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { API_URL, apiFetch } from "@/lib/api"
+import { isPermissionDenied, permissionErrorMessage } from "@/lib/errors"
+import AccessDenied from "@/components/AccessDenied"
 
 // ── Available icons for selector ──────────────────────────────────────────────
 const AVAILABLE_ICONS = [
@@ -32,6 +34,7 @@ type SortKey = "label" | "key" | "order"
 export default function MenuManagementPage() {
   const [menus, setMenus] = useState<Menu[]>([])
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [message, setMessage] = useState({ type: "", text: "" })
 
   // ── Table controls ───────────────────────────────────────────────────────
@@ -71,7 +74,8 @@ export default function MenuManagementPage() {
       const res = await apiFetch(`${API_URL}/api/v1/menus`)
       if (res.ok) setMenus(await res.json())
     } catch (e) {
-      console.error(e)
+      if (isPermissionDenied(e)) setAccessDenied(true)
+      else console.error(e)
     } finally {
       setLoading(false)
     }
@@ -155,7 +159,7 @@ export default function MenuManagementPage() {
         const err = await res.json()
         showMsg("error", err.detail || "Failed to create menu")
       }
-    } catch { showMsg("error", "Network error") }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "Network error")) }
     finally { setCreating(false) }
   }
 
@@ -187,7 +191,7 @@ export default function MenuManagementPage() {
       } else {
         showMsg("error", "Failed to update menu")
       }
-    } catch { showMsg("error", "Network error") }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "Network error")) }
     finally { setSaving(false) }
   }
 
@@ -200,7 +204,7 @@ export default function MenuManagementPage() {
         body: JSON.stringify({ is_active: !menu.is_active })
       })
       fetchMenus()
-    } catch { showMsg("error", "Failed to toggle menu") }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "Failed to toggle menu")) }
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -218,7 +222,7 @@ export default function MenuManagementPage() {
       } else {
         showMsg("error", "Failed to delete menu")
       }
-    } catch { showMsg("error", "Network error") }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "Network error")) }
     finally { setDeleting(false) }
   }
 
@@ -227,6 +231,8 @@ export default function MenuManagementPage() {
       <Loader2 className="w-8 h-8 animate-spin text-primary" />
     </div>
   )
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-6 max-w-6xl pb-10">

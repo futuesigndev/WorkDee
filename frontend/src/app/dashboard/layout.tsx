@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { API_URL, apiFetch, SessionExpiredError } from '@/lib/api'
+import { PERMISSION_DENIED_MESSAGE, isPermissionDenied } from '@/lib/errors'
 
 // Icon mapping to handle dynamic strings from DB
 const IconMap: Record<string, any> = {
@@ -70,6 +71,7 @@ export default function DashboardLayout({
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [menusDenied, setMenusDenied] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
 
@@ -95,7 +97,10 @@ export default function DashboardLayout({
           setMenuItems(data);
         }
       } catch (err) {
-        if (!(err instanceof SessionExpiredError)) {
+        if (isPermissionDenied(err)) {
+          // Session is valid, but this account may not read the menu list (HTTP 403).
+          setMenusDenied(true);
+        } else if (!(err instanceof SessionExpiredError)) {
           console.error('Failed to load menus', err);
         }
       } finally {
@@ -158,7 +163,12 @@ export default function DashboardLayout({
                 {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 bg-base-content/50 rounded-lg animate-pulse"></div>)}
               </div>
             ) : rootMenus.length === 0 ? (
-              <div className="p-4 text-center text-xs text-base-content/30 italic">No access granted</div>
+              <div className={cn(
+                "p-4 text-center text-xs",
+                menusDenied ? "text-error/80 font-bold" : "text-base-content/30 italic"
+              )}>
+                {menusDenied ? PERMISSION_DENIED_MESSAGE : 'No access granted'}
+              </div>
             ) : (
               rootMenus.map((item) => {
                 const Icon = IconMap[item.icon] || Circle;

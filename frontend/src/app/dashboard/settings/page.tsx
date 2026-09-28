@@ -4,10 +4,13 @@ import React, { useState, useEffect } from "react"
 import { Save, Palette, Globe, Shield, Loader2, CheckCircle2, AlertCircle, Type, ImageIcon, Layout, Eye, EyeOff, Key } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { API_URL, apiFetch } from "@/lib/api"
+import { isPermissionDenied, permissionErrorMessage } from "@/lib/errors"
+import AccessDenied from "@/components/AccessDenied"
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [message, setMessage] = useState({ type: "", text: "" })
   const [showAccessToken, setShowAccessToken] = useState(false)
   const [showChannelSecret, setShowChannelSecret] = useState(false)
@@ -58,7 +61,8 @@ export default function SettingsPage() {
         })
       }
     } catch (error) {
-      console.error("Failed to fetch settings:", error)
+      if (isPermissionDenied(error)) setAccessDenied(true)
+      else console.error("Failed to fetch settings:", error)
     } finally {
       setIsLoading(false)
     }
@@ -85,7 +89,8 @@ export default function SettingsPage() {
         throw new Error("Failed to update settings")
       }
     } catch (error: any) {
-      setMessage({ type: "error", text: error.message })
+      // A 403 gets the permission-specific message; anything else keeps its own text.
+      setMessage({ type: "error", text: permissionErrorMessage(error, error?.message || "Failed to update settings") })
     } finally {
       setIsSaving(false)
     }
@@ -98,6 +103,8 @@ export default function SettingsPage() {
       </div>
     )
   }
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-6 max-w-5xl pb-10">

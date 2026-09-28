@@ -22,6 +22,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { API_URL, apiFetch } from '@/lib/api'
+import { isPermissionDenied, permissionErrorMessage } from '@/lib/errors'
+import AccessDenied from '@/components/AccessDenied'
 
 export default function LineApprovalPage() {
   const [activeTab, setActiveTab] = useState<'qrcode' | 'pending' | 'approved'>('pending')
@@ -31,6 +33,7 @@ export default function LineApprovalPage() {
   const [approvedBindings, setApprovedBindings] = useState<any[]>([])
   const [approvedTotal, setApprovedTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [processing, setProcessing] = useState<string | null>(null)
 
   // Search, Sort & Pagination states (Approved Tab)
@@ -94,8 +97,12 @@ export default function LineApprovalPage() {
         setPendingBindings(await res.json())
       }
     } catch (err) {
-      console.error(err)
-      showNotification('error', 'Failed to load pending requests')
+      if (isPermissionDenied(err)) {
+        setAccessDenied(true)
+      } else {
+        console.error(err)
+        showNotification('error', 'Failed to load pending requests')
+      }
     } finally {
       setLoading(false)
     }
@@ -119,8 +126,12 @@ export default function LineApprovalPage() {
         setApprovedTotal(data.total || 0)
       }
     } catch (err) {
-      console.error(err)
-      showNotification('error', 'Failed to load active bindings')
+      if (isPermissionDenied(err)) {
+        setAccessDenied(true)
+      } else {
+        console.error(err)
+        showNotification('error', 'Failed to load active bindings')
+      }
     } finally {
       setLoading(false)
     }
@@ -150,7 +161,8 @@ export default function LineApprovalPage() {
           setUserResults(data || [])
         }
       } catch (err) {
-        console.error(err)
+        if (isPermissionDenied(err)) setAccessDenied(true)
+        else console.error(err)
       } finally {
         setSearchingUsers(false)
       }
@@ -198,7 +210,7 @@ export default function LineApprovalPage() {
         showNotification('error', errData.detail || 'Approval failed')
       }
     } catch (err) {
-      showNotification('error', 'Network error during approval')
+      showNotification('error', permissionErrorMessage(err, 'Network error during approval'))
     } finally {
       setProcessing(null)
     }
@@ -219,7 +231,7 @@ export default function LineApprovalPage() {
         showNotification('error', errData.detail || 'Rejection failed')
       }
     } catch (err) {
-      showNotification('error', 'Network error during rejection')
+      showNotification('error', permissionErrorMessage(err, 'Network error during rejection'))
     } finally {
       setProcessing(null)
     }
@@ -245,7 +257,7 @@ export default function LineApprovalPage() {
         showNotification('error', errData.detail || 'Revocation failed')
       }
     } catch (err) {
-      showNotification('error', 'Network error during revocation')
+      showNotification('error', permissionErrorMessage(err, 'Network error during revocation'))
     } finally {
       setSubmittingRevoke(false)
     }
@@ -288,6 +300,8 @@ export default function LineApprovalPage() {
   }
 
   const approvedTotalPages = Math.ceil(approvedTotal / itemsPerPage)
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-6">

@@ -18,6 +18,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { API_URL, apiFetch } from "@/lib/api"
+import { isPermissionDenied, permissionErrorMessage } from "@/lib/errors"
+import AccessDenied from "@/components/AccessDenied"
 
 interface Role {
   id: string;
@@ -42,6 +44,7 @@ export default function RolesPermissionsPage() {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
   const [allowedMenuIds, setAllowedMenuIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [saving, setSaving] = useState(false)
   const [collapsedParentIds, setCollapsedParentIds] = useState<string[]>([])
 
@@ -115,7 +118,8 @@ export default function RolesPermissionsPage() {
         if (rData.length > 0) setSelectedRole(rData[0])
       }
     } catch (err) {
-      console.error("Failed to fetch roles/menus", err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error("Failed to fetch roles/menus", err)
     } finally {
       setLoading(false)
     }
@@ -129,7 +133,8 @@ export default function RolesPermissionsPage() {
         setAllowedMenuIds(data.menu_ids || [])
       }
     } catch (err) {
-      console.error("Failed to fetch permissions", err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error("Failed to fetch permissions", err)
     }
   }
 
@@ -181,7 +186,7 @@ export default function RolesPermissionsPage() {
         alert("Permissions saved successfully")
       }
     } catch (err) {
-      alert("Failed to save permissions")
+      alert(permissionErrorMessage(err, "Failed to save permissions"))
     } finally {
       setSaving(false)
     }
@@ -206,7 +211,7 @@ export default function RolesPermissionsPage() {
         alert(error.detail || "Failed to create role")
       }
     } catch (err) {
-      alert("Network error: Failed to create role")
+      alert(permissionErrorMessage(err, "Network error: Failed to create role"))
     } finally {
       setCreating(false)
     }
@@ -231,7 +236,7 @@ export default function RolesPermissionsPage() {
         alert(error.detail || "Failed to delete role")
       }
     } catch (err) {
-      alert("Network error: Failed to delete role")
+      alert(permissionErrorMessage(err, "Network error: Failed to delete role"))
     } finally {
       setDeletingRole(false)
     }
@@ -255,6 +260,8 @@ export default function RolesPermissionsPage() {
       <Loader2 className="w-8 h-8 animate-spin text-primary" />
     </div>
   )
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-6">

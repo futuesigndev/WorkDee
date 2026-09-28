@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { API_URL, apiFetch } from '@/lib/api'
+import { isPermissionDenied } from '@/lib/errors'
+import AccessDenied from '@/components/AccessDenied'
 
 // Helper for formatting duration
 const formatDuration = (minutes: number) => {
@@ -56,6 +58,7 @@ export default function LogsPage() {
   const [logs, setLogs] = useState<any[]>([])
   const [totalLogs, setTotalLogs] = useState(0)
   const [loadingLogs, setLoadingLogs] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
 
   const [summary, setSummary] = useState<any>({
     total_logins_today: 0,
@@ -93,7 +96,8 @@ export default function LogsPage() {
         }
       }
     } catch (err) {
-      console.error("Error fetching logs:", err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error("Error fetching logs:", err)
     } finally {
       setLoadingLogs(false)
     }
@@ -111,7 +115,8 @@ export default function LogsPage() {
         setSummary(await res.json())
       }
     } catch (err) {
-      console.error("Error fetching summary:", err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error("Error fetching summary:", err)
     } finally {
       setLoadingSummary(false)
     }
@@ -132,7 +137,8 @@ export default function LogsPage() {
         setSessions(data.sessions || [])
       }
     } catch (err) {
-      console.error("Error fetching sessions:", err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error("Error fetching sessions:", err)
     } finally {
       setLoadingSessions(false)
     }
@@ -224,6 +230,8 @@ export default function LogsPage() {
   }
 
   const totalPages = Math.ceil(totalLogs / itemsPerPage)
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-8 pb-10">

@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { API_URL, apiFetch } from '@/lib/api'
+import { isPermissionDenied } from '@/lib/errors'
+import AccessDenied from '@/components/AccessDenied'
 
 export default function DashboardOverview() {
   const [stats, setStats] = useState({
@@ -23,6 +25,7 @@ export default function DashboardOverview() {
     recentLogs: 0
   })
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -40,7 +43,10 @@ export default function DashboardOverview() {
           linePending: l.ok ? (await l.json()).length : 0,
           recentLogs: lg.ok ? (await lg.json()).length : 0,
         })
-      } catch (err) {} finally {
+      } catch (err) {
+        if (isPermissionDenied(err)) setAccessDenied(true)
+        else console.error(err)
+      } finally {
         setLoading(false)
       }
     }
@@ -53,6 +59,8 @@ export default function DashboardOverview() {
     { label: 'Pending LINE', value: stats.linePending, icon: MessageSquare, color: 'text-[#06C755]', bg: 'bg-[#06C755]/5', path: '/dashboard/line' },
     { label: 'Recent Logs', value: stats.recentLogs, icon: History, color: 'text-warning', bg: 'bg-warning/5', path: '/dashboard/logs' },
   ]
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-8">

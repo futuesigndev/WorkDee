@@ -18,11 +18,14 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { API_URL, apiFetch } from "@/lib/api"
+import { isPermissionDenied, permissionErrorMessage } from "@/lib/errors"
+import AccessDenied from "@/components/AccessDenied"
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([])
   const [roles, setRoles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [search, setSearch] = useState("")
   const [isProvisioning, setIsProvisioning] = useState(false)
   const [provisionId, setProvisionId] = useState("")
@@ -49,7 +52,8 @@ export default function UsersPage() {
       const res = await apiFetch(`${API_URL}/api/v1/users`)
       if (res.ok) setUsers(await res.json())
     } catch (err) {
-      console.error(err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error(err)
     } finally {
       setLoading(false)
     }
@@ -60,7 +64,8 @@ export default function UsersPage() {
       const res = await apiFetch(`${API_URL}/api/v1/roles`)
       if (res.ok) setRoles(await res.json())
     } catch (err) {
-      console.error(err)
+      if (isPermissionDenied(err)) setAccessDenied(true)
+      else console.error(err)
     }
   }
 
@@ -84,7 +89,8 @@ export default function UsersPage() {
           setEmpResults(data.items || [])
         }
       } catch (err) {
-        console.error(err)
+        if (isPermissionDenied(err)) setAccessDenied(true)
+        else console.error(err)
       } finally {
         setSearchingEmp(false)
       }
@@ -111,7 +117,7 @@ export default function UsersPage() {
         alert(error.detail || "Provisioning failed")
       }
     } catch (err) {
-      alert("Network error")
+      alert(permissionErrorMessage(err, "Network error"))
     } finally {
       setIsProvisioning(false)
     }
@@ -132,7 +138,7 @@ export default function UsersPage() {
         alert(error.detail || "Deletion failed")
       }
     } catch (err) {
-      alert("Network error")
+      alert(permissionErrorMessage(err, "Network error"))
     } finally {
       setDeletingId(null)
     }
@@ -153,7 +159,7 @@ export default function UsersPage() {
         alert(error.detail || "Failed to update user status")
       }
     } catch (err) {
-      alert("Network error: Failed to update user status")
+      alert(permissionErrorMessage(err, "Network error: Failed to update user status"))
     }
   }
 
@@ -171,7 +177,7 @@ export default function UsersPage() {
         alert(error.detail || "Failed to update user role")
       }
     } catch (err) {
-      alert("Network error: Failed to update user role")
+      alert(permissionErrorMessage(err, "Network error: Failed to update user role"))
     }
   }
 
@@ -230,6 +236,8 @@ export default function UsersPage() {
     const start = (currentPage - 1) * itemsPerPage
     return processedUsers.slice(start, start + itemsPerPage)
   }, [processedUsers, currentPage, itemsPerPage])
+
+  if (accessDenied) return <AccessDenied />
 
   return (
     <div className="space-y-6">
