@@ -506,14 +506,22 @@ async def line_webhook(
         else settings.LINE_CHANNEL_SECRET
     )
     
-    # 1. Validate signature if LINE_CHANNEL_SECRET is configured
-    if line_secret and line_secret != "YOUR_LINE_CHANNEL_SECRET":
-        if not x_line_signature:
-            raise HTTPException(status_code=400, detail="Missing X-Line-Signature header")
-        if not verify_line_signature(body, x_line_signature, line_secret):
-            raise HTTPException(status_code=401, detail="Invalid X-Line-Signature")
+    # 1. Signature verification is mandatory — fail closed when no real secret is configured.
+    #    An unconfigured integration must not accept unsigned requests from anyone.
+    if not line_secret or line_secret == "YOUR_LINE_CHANNEL_SECRET":
+        raise HTTPException(
+            status_code=503,
+            detail="LINE integration is not configured (missing channel secret)"
+        )
+
+    # 2. With a real secret configured, a signature is required. Missing header and invalid
+    #    signature are kept as distinct failures so logs make clear which one fired.
+    if not x_line_signature:
+        raise HTTPException(status_code=400, detail="Missing X-Line-Signature header")
+    if not verify_line_signature(body, x_line_signature, line_secret):
+        raise HTTPException(status_code=401, detail="Invalid X-Line-Signature")
             
-    # 2. Process events (logging them for system admin review)
+    # 3. Process events (logging them for system admin review)
     try:
         payload = await request.json()
         events = payload.get("events", [])
