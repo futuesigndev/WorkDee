@@ -13,6 +13,8 @@ const REFRESH_PATH = `${API_URL}/api/v1/auth/refresh`;
  * Features:
  * - ถ้า response เป็น 401 → ลอง refresh session เงียบ ๆ 1 ครั้ง แล้ว retry request เดิม 1 ครั้ง
  * - ถ้า refresh ล้มเหลว หรือ retry แล้วยัง 401 → redirect ไป /login (พร้อม ?expired=1)
+ * - ถ้า response เป็น 403 → throw PermissionDeniedError (session ยังใช้ได้ แต่ไม่มีสิทธิ์)
+ *   ไม่ refresh และไม่ redirect ไป /login — ให้ caller ตัดสินใจแสดงผลเอง
  * - Single-flight: 401 หลายอันพร้อมกันจะ await refresh promise เดียวกัน (Core-API rotate token ทุกครั้ง)
  * - ป้องกัน redirect loop โดย debounce ด้วย flag
  * - ส่ง credentials: 'include' เสมอ (cookie-based auth)
@@ -29,6 +31,19 @@ export class SessionExpiredError extends Error {
   constructor() {
     super('Session expired');
     this.name = 'SessionExpiredError';
+  }
+}
+
+/**
+ * Error class สำหรับ HTTP 403 — session ยังใช้ได้แต่ไม่มีสิทธิ์ (insufficient permission)
+ * แยกจาก SessionExpiredError โดยเจตนา: การ refresh token ไม่ช่วยให้ได้สิทธิ์เพิ่ม
+ * และไม่ควร redirect ไป /login (จะดูเหมือนปัญหา session ไม่ใช่ปัญหาสิทธิ์)
+ * caller เป็นคนเลือก UI เอง (toast / inline message)
+ */
+export class PermissionDeniedError extends Error {
+  constructor() {
+    super('Permission denied');
+    this.name = 'PermissionDeniedError';
   }
 }
 
@@ -106,21 +121,31 @@ export async function apiFetch(
   if (res.status === 401) {
     // One silent refresh, then retry the original request exactly once.
     const refreshed = await refreshSession();
-    if (refreshed) {
-      res = await fetch(input, {
-        ...init,
-        credentials: 'include',
-      });
-      if (res.status !== 401) {
-        return res;
-      }
+    if (!refreshed) {
+      // Refresh failed: the session is really gone.
+      redirectToLogin();
+      // throw ทันที — ทำให้ caller ออกจาก try block และ finally จะทำงาน (เช่น setLoading(false))
+      // ไม่ใช้ never-resolving promise เพราะทำให้ UI hang และ setState ค้าง
+      throw new SessionExpiredError();
     }
 
-    // Refresh failed, or the retry is still unauthorized: the session is really gone.
-    redirectToLogin();
-    // throw ทันที — ทำให้ caller ออกจาก try block และ finally จะทำงาน (เช่น setLoading(false))
-    // ไม่ใช้ never-resolving promise เพราะทำให้ UI hang และ setState ค้าง
-    throw new SessionExpiredError();
+    res = await fetch(input, {
+      ...init,
+      credentials: 'include',
+    });
+
+    if (res.status === 401) {
+      // Refreshed fine, but the retry is still unauthorized: give up on this session.
+      redirectToLogin();
+      throw new SessionExpiredError();
+    }
+  }
+
+  if (res.status === 403) {
+    // Valid session, insufficient permission. Deliberately NOT routed through the 401
+    // refresh-then-retry path: refreshing cannot grant permission, and redirecting to
+    // /login would misrepresent a permissions problem as a session problem.
+    throw new PermissionDeniedError();
   }
 
   return res;
