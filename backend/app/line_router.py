@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, or_, and_, func
 from app.database import get_db
 from app.models import LineBinding, LocalUser, AuditLog, LocalRole, AppSettings
-from app.auth_router import get_current_user_id
+from app.dependencies import get_current_user_id, require_permission
 from app.config import settings
 from app.core_api import core_api_client
 from datetime import datetime
@@ -125,7 +125,8 @@ async def send_line_welcome_notification(line_user_id: str, db: AsyncSession):
 @router.get("/line/pending")
 async def get_pending_bindings(
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    admin_id: str = Depends(get_current_user_id),
+    _current_user = Depends(require_permission("line"))
 ):
     """Gets the list of pending bindings, joined with employee details if matched."""
     stmt = (
@@ -160,7 +161,8 @@ async def get_approved_bindings(
     page: int = 1,
     page_size: int = 10,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    admin_id: str = Depends(get_current_user_id),
+    _current_user = Depends(require_permission("line"))
 ):
     """Gets the list of active/approved bindings with search, sort, and pagination."""
     # Base query joining LineBinding and LocalUser
@@ -230,7 +232,8 @@ async def approve_binding(
     req: Request,
     payload: ApproveBindingRequest = None,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    admin_id: str = Depends(get_current_user_id),
+    _current_user = Depends(require_permission("line"))
 ):
     """Approves a LINE binding. Optionally updates the bound employee ID beforehand. Enforces 1:1 active bindings."""
     # Find the request binding
@@ -369,7 +372,8 @@ async def approve_binding(
 async def reject_binding(
     binding_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    admin_id: str = Depends(get_current_user_id),
+    _current_user = Depends(require_permission("line"))
 ):
     """Rejects a pending LINE binding."""
     stmt = update(LineBinding).where(
@@ -395,7 +399,8 @@ async def revoke_binding(
     payload: RevokeBindingRequest,
     req: Request,
     db: AsyncSession = Depends(get_db),
-    admin_id: str = Depends(get_current_user_id)
+    admin_id: str = Depends(get_current_user_id),
+    _current_user = Depends(require_permission("line"))
 ):
     """Manually revokes an active LINE binding with a provided reason."""
     stmt = select(LineBinding).where(
