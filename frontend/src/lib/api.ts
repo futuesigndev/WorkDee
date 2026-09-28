@@ -3,12 +3,17 @@
 const isBrowser = typeof window !== 'undefined';
 export const API_URL = isBrowser ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8011");
 
+// Backend refresh endpoint (via the Next.js rewrite when running in the browser).
+const REFRESH_PATH = `${API_URL}/api/v1/auth/refresh`;
+
 /**
  * apiFetch — fetch wrapper ที่ auto-redirect ไป /login เมื่อ session หมดอายุ (401)
  * ใช้แทน fetch() ปกติในทุก client component ของ dashboard
  *
  * Features:
- * - ถ้า response เป็น 401 → redirect ไป /login ทันที (พร้อม ?expired=1)
+ * - ถ้า response เป็น 401 → ลอง refresh session เงียบ ๆ 1 ครั้ง แล้ว retry request เดิม 1 ครั้ง
+ * - ถ้า refresh ล้มเหลว หรือ retry แล้วยัง 401 → redirect ไป /login (พร้อม ?expired=1)
+ * - Single-flight: 401 หลายอันพร้อมกันจะ await refresh promise เดียวกัน (Core-API rotate token ทุกครั้ง)
  * - ป้องกัน redirect loop โดย debounce ด้วย flag
  * - ส่ง credentials: 'include' เสมอ (cookie-based auth)
  */
@@ -57,16 +62,61 @@ function redirectToLogin() {
   window.location.replace('/login?expired=1');
 }
 
+/**
+ * Single-flight silent refresh.
+ *
+ * At most one POST /auth/refresh is in flight at a time; concurrent callers await the
+ * same promise. This matters because Core-API rotates the refresh token on every use,
+ * so two parallel refreshes would race and one would present a token Core-API has
+ * already invalidated. Several dashboard screens fire multiple apiFetch calls in
+ * parallel on mount, so this collision is a normal case, not an edge case.
+ *
+ * Uses a raw fetch (never apiFetch) so a 401 from the refresh endpoint can never
+ * recurse back into this same retry logic.
+ */
+let _refreshPromise: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async () => {
+    try {
+      const res = await fetch(REFRESH_PATH, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    _refreshPromise = null;
+  });
+  return _refreshPromise;
+}
+
 export async function apiFetch(
   input: string,
   init?: RequestInit
 ): Promise<Response> {
-  const res = await fetch(input, {
+  let res = await fetch(input, {
     ...init,
     credentials: 'include',
   });
 
   if (res.status === 401) {
+    // One silent refresh, then retry the original request exactly once.
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      res = await fetch(input, {
+        ...init,
+        credentials: 'include',
+      });
+      if (res.status !== 401) {
+        return res;
+      }
+    }
+
+    // Refresh failed, or the retry is still unauthorized: the session is really gone.
     redirectToLogin();
     // throw ทันที — ทำให้ caller ออกจาก try block และ finally จะทำงาน (เช่น setLoading(false))
     // ไม่ใช้ never-resolving promise เพราะทำให้ UI hang และ setState ค้าง

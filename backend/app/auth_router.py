@@ -7,6 +7,9 @@ from app.models import LocalUser, LocalRole, LocalMenu, RoleMenuPermission, AppS
 from pydantic import BaseModel
 from app.dependencies import get_current_user_id
 from app.config import settings
+from app.redis_client import get_redis, refresh_token_key
+from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,7 +22,8 @@ async def login(
     login_data: LoginRequest,
     response: Response,
     req: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    redis = Depends(get_redis)
 ):
     try:
         # 1. Login to Core-API
@@ -109,7 +113,20 @@ async def login(
         )
         db.add(audit)
         await db.commit()
-        
+
+        # 6. Store the refresh token in Redis so logout can revoke this session server-side
+        #    (key format employee_id:refresh_token, per docs/SYSTEM_SPEC §3.1).
+        #    If Redis is unreachable, login still succeeds — Core-API already authenticated
+        #    the user; refresh will then fail closed until Redis is reachable again.
+        try:
+            await redis.set(
+                refresh_token_key(user.employee_id),
+                core_data["refresh_token"],
+                ex=settings.REFRESH_TOKEN_EXPIRE_SECONDS,
+            )
+        except RedisError as e:
+            print(f"Redis error at login (refresh token not stored): {e}")
+
         return {"message": "Login successful", "user": core_data["user"]}
         
     except HTTPException:
@@ -168,18 +185,141 @@ async def get_user_menus(
         
     return hierarchy
 
+@router.post("/refresh")
+async def refresh(
+    response: Response,
+    redis = Depends(get_redis),
+    refresh_token: str | None = Cookie(None),
+    access_token: str | None = Cookie(None),
+):
+    """Exchange the refresh_token cookie for new tokens.
+
+    Core-API rotates the refresh token on every use, so the rotated pair must replace
+    both the cookies and the Redis value. The access token is expected to be expired
+    here, so it is only *read* (the `sub` claim), never verified — the same
+    claim-read pattern logout uses. Redis is the revocation gate: a missing key or a
+    value that doesn't match the cookie means the session is dead, so fail closed.
+    """
+    from jose import jwt
+
+    def _expired() -> JSONResponse:
+        # Headers set on the injected Response are dropped when an HTTPException is
+        # raised, so build the 401 explicitly to guarantee the cookies are cleared.
+        resp = JSONResponse(status_code=401, content={"detail": "Session expired"})
+        resp.delete_cookie("access_token")
+        resp.delete_cookie("refresh_token")
+        return resp
+
+    # 1. The refresh_token cookie is required.
+    if not refresh_token:
+        return _expired()
+
+    # 2. Read employee_id from the access token claim (it is normally expired by now;
+    #    python-jose checks exp by default, so verify_exp must be disabled too).
+    employee_id = None
+    if access_token:
+        try:
+            payload = jwt.decode(
+                access_token,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+                options={"verify_signature": False, "verify_exp": False}
+            )
+            employee_id = payload.get("sub")
+        except Exception:
+            employee_id = None
+    if not employee_id:
+        return _expired()
+
+    key = refresh_token_key(employee_id)
+
+    # 3. Redis gates revocation. Unreachable Redis => fail closed (state unverifiable).
+    try:
+        stored = await redis.get(key)
+    except RedisError as e:
+        print(f"Redis error at refresh (failing closed): {e}")
+        return _expired()
+
+    if stored is None:
+        # Revoked (logout) or never stored — force a real login.
+        return _expired()
+
+    if stored != refresh_token:
+        # Cookie doesn't match the stored token: stale or stolen. Drop the session whole.
+        try:
+            await redis.delete(key)
+        except RedisError as e:
+            print(f"Redis error while invalidating mismatched token: {e}")
+        return _expired()
+
+    # 4. Exchange with Core-API. Any failure => clean 401 (never leak exception text).
+    try:
+        core_data = await core_api_client.refresh_token(refresh_token)
+    except Exception as e:
+        print(f"Core-API refresh failed: {e}")
+        try:
+            await redis.delete(key)
+        except RedisError:
+            pass
+        return _expired()
+
+    new_access = core_data.get("access_token")
+    new_refresh = core_data.get("refresh_token")
+    if not new_access or not new_refresh:
+        try:
+            await redis.delete(key)
+        except RedisError:
+            pass
+        return _expired()
+
+    # 5. Store the rotated refresh token (TTL reset). If it can't be stored, the old
+    #    token is already invalid at Core-API, so this session cannot refresh again.
+    try:
+        await redis.set(key, new_refresh, ex=settings.REFRESH_TOKEN_EXPIRE_SECONDS)
+    except RedisError as e:
+        print(f"Redis error while storing rotated token (failing closed): {e}")
+        return _expired()
+
+    # 6. Issue the new cookies with the same flags as /login.
+    response.set_cookie(
+        key="access_token",
+        value=new_access,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_SECONDS
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_SECONDS
+    )
+
+    return {"message": "Token refreshed"}
+
 @router.post("/logout")
 async def logout(
     response: Response,
     req: Request,
     db: AsyncSession = Depends(get_db),
+    redis = Depends(get_redis),
     access_token: str | None = Cookie(None)
 ):
+    employee_id = None
     try:
         if access_token:
             from jose import jwt
-            # Decode payload without verification to retrieve sub (employee_id) even if token is expired/invalid
-            payload = jwt.decode(access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], options={"verify_signature": False})
+            # Read the sub claim (not a trust decision) even when the token is expired:
+            # python-jose validates exp by default, so verify_exp must also be disabled.
+            payload = jwt.decode(
+                access_token,
+                settings.SECRET_KEY,
+                algorithms=[settings.ALGORITHM],
+                options={"verify_signature": False, "verify_exp": False}
+            )
             employee_id = payload.get("sub")
             if employee_id:
                 ip_addr = req.client.host if req.client else "127.0.0.1"
@@ -195,6 +335,14 @@ async def logout(
     except Exception as e:
         # Prevent any logging failure from blocking the logout cookie clearing
         print(f"Logout audit log error: {e}")
+
+    # Revoke the server-side session before clearing cookies. If Redis is unreachable,
+    # log it but still clear the cookies — logout must not be blocked by Redis.
+    if employee_id:
+        try:
+            await redis.delete(refresh_token_key(employee_id))
+        except RedisError as e:
+            print(f"Logout Redis revoke error: {e}")
 
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")

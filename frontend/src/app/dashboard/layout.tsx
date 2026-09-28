@@ -105,21 +105,6 @@ export default function DashboardLayout({
     fetchMenus();
   }, []);
 
-  // Periodic session heartbeat — ตรวจ session ทุก 2 นาที
-  // ถ้า token หมดอายุระหว่างใช้งาน จะ redirect ทันที ไม่รอให้ user กดอะไร
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        await apiFetch(`${API_URL}/api/v1/auth/me`);
-      } catch (err) {
-        if (err instanceof SessionExpiredError) return; // redirect already in progress
-        // network error — ignore, ไม่ redirect (อาจแค่ offline ชั่วคราว)
-      }
-    };
-    const interval = setInterval(checkSession, 2 * 60 * 1000); // 2 minutes
-    return () => clearInterval(interval);
-  }, []);
-
   const toggleExpand = (key: string) => {
     setExpandedMenus(prev => {
       // Exclusive accordion: close all others, toggle the clicked one
