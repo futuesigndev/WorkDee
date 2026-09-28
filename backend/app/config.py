@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     LINE_LIFF_ID: str | None = None
 
     # CORS — รับเป็น string คั่นด้วย comma แล้วแปลงเป็น list
-    CORS_ORIGINS: str = "http://localhost:3011,http://127.0.0.1:3011"
+    CORS_ORIGINS: str = "http://localhost:3012,http://127.0.0.1:3012"
 
     # Cookie Security
     COOKIE_SECURE: bool = False       # False = dev (HTTP), True = prod (HTTPS)

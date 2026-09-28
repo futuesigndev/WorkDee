@@ -28,12 +28,12 @@
 └───────────────────┬─────────────────────────────────────┘
                     │ HTTPS
          ┌──────────▼──────────┐
-         │   Next.js Frontend  │  Port 3011
+         │   Next.js Frontend  │  Port 3012
          │   (Standalone SSR)  │
          └──────────┬──────────┘
                     │ Internal API proxy /api/*
          ┌──────────▼──────────┐
-         │  FastAPI Backend    │  Port 8011
+         │  FastAPI Backend    │  Port 8012
          │  (Python / uvicorn) │
          └──────┬──────┬───────┘
                 │      │
@@ -44,7 +44,7 @@
 ```
 
 **Internal Communication (Docker):**
-- Frontend → Backend ผ่าน `/api/*` rewrite → `http://backend:8011`
+- Frontend → Backend ผ่าน `/api/*` rewrite → `http://backend:8000` (container-internal port)
 - Backend → PostgreSQL ผ่าน `db:5432` (docker network)
 - Backend → Redis ผ่าน `redis:6379` (docker network)
 
@@ -81,6 +81,7 @@ cp backend/.env.example backend/.env
 | `CORS_ORIGINS` | ✅ | URL ของ Frontend คั่นด้วย `,` |
 | `COOKIE_SECURE` | ✅ | `False` = dev (HTTP), `True` = prod (HTTPS) |
 | `COOKIE_SAMESITE` | ✅ | `lax` = dev, `none` = cross-site prod |
+| `APP_ENV` | ⬜ | `development` (default) = ส่ง header `ngrok-skip-browser-warning` (สำหรับ ngrok tunnel ในเครื่อง), ค่าอื่น = ปิด (ตั้ง `production` บน env ที่ deploy) |
 | `LINE_CHANNEL_ACCESS_TOKEN` | ⬜ | Optional — ตั้งผ่าน Admin UI แทนได้ |
 | `LINE_CHANNEL_SECRET` | ⬜ | Optional — ตั้งผ่าน Admin UI แทนได้ |
 | `LINE_LIFF_ID` | ⬜ | Optional — ตั้งผ่าน Admin UI แทนได้ |
@@ -175,7 +176,7 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # รัน development server
-uvicorn app.main:app --host 0.0.0.0 --port 8011 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8012 --reload
 ```
 
 ### Frontend
@@ -190,13 +191,13 @@ cp .env.local.example .env.local
 
 # รัน development server
 npm run dev
-# → http://localhost:3011
+# → http://localhost:3012
 ```
 
 ### ตรวจสอบ Health
-- Frontend: http://localhost:3011
-- Backend API: http://localhost:8011/health
-- API Docs: http://localhost:8011/docs
+- Frontend: http://localhost:3012
+- Backend API: http://localhost:8012/health
+- API Docs: http://localhost:8012/docs
 
 ---
 
@@ -325,8 +326,8 @@ frontend:
 
 ```bash
 # .env (root — สำหรับ docker-compose เท่านั้น)
-BACKEND_PORT=8011
-FRONTEND_PORT=3011
+BACKEND_PORT=8012
+FRONTEND_PORT=3012
 POSTGRES_PORT=5432
 REDIS_PORT=6379
 NEXT_PUBLIC_API_URL=https://api.your-domain.com
@@ -340,13 +341,13 @@ POSTGRES_DB=corptemp_db
 services:
   backend:
     ports:
-      - "${BACKEND_PORT:-8011}:8000"
+      - "${BACKEND_PORT:-8012}:8000"
   frontend:
     ports:
-      - "${FRONTEND_PORT:-3011}:3000"
+      - "${FRONTEND_PORT:-3012}:3000"
     build:
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8011}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8012}
 ```
 
 จากนั้น build:
