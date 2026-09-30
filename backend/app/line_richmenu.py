@@ -6,17 +6,23 @@ batching rules and the "never let a LINE failure break a binding change" policy.
 
 Design decisions worth knowing before editing:
 
-* **One menu, one picture, four buttons.** The picture carries all four buttons (2500 × 1686, 2 × 2), and
-  **all four are live since task 031** — "ลงเวลา" (`uri` → LIFF `/checkin`), "รอบของฉัน" (`/rounds`),
-  "ประวัติการลงเวลา" (`/history`) and "ศูนย์รวมบริการ" (`/portal`, the service hub). **Nothing in the menu is
-  a placeholder any more**: no tile sends a `postback`, and the picture carries no "เร็วๆ นี้" tag.
-  The `soon:*` answers in the webhook stay because phones keep an older menu until the User republishes —
-  see `RETIRED_SOON_POSTBACK_DATA` and `is_soon_postback()`.
+* **One menu, one picture, four buttons — a designed picture, not a grid.** The picture (2500 × 1686) is
+  the design the User exported on 2026-09-30 (task 042): a pill "ลงเวลา" in the upper right and three
+  circles along the bottom ("รอบของฉัน", "ประวัติลงเวลา", "ศูนย์รวมบริการ") with a title above and a footer
+  line below it. Only those four shapes are tap areas (`MENU_AREAS`), so the title and the footer are not
+  buttons. **All four are live since task 031** — "ลงเวลา" (`uri` → LIFF `/checkin`), "รอบของฉัน"
+  (`/rounds`), "ประวัติลงเวลา" (`/history`) and "ศูนย์รวมบริการ" (`/portal`, the service hub). **Nothing in
+  the menu is a placeholder any more**: no tile sends a `postback`, and the picture carries no "เร็วๆ นี้"
+  tag. The `soon:*` answers in the webhook stay because phones keep an older menu until the User republishes
+  — see `RETIRED_SOON_POSTBACK_DATA` and `is_soon_postback()`.
 * **Never the default menu.** The menu is linked **per user** (`POST /v2/bot/user/{userId}/richmenu/
   {id}` / `richmenu/bulk/link`), so people who have not been approved never see it. There is no call to
   `/v2/bot/user/all/richmenu` anywhere in the project.
-* **The picture is part of the repository** (`assets/rich_menu/workdee-employee-menu.png`), with the
-  HTML source next to it; nothing is rendered at runtime.
+* **The picture is part of the repository** (`assets/rich_menu/workdee-employee-menu.jpg`): the file that is
+  uploaded, 2500 × 1686 as LINE requires. The User's own export sits next to it as
+  `workdee-employee-menu-source.jpg` (2493 × 1681 — the upload file is a scale of it), and the previous
+  design's PNG plus the HTML it was rendered from are kept as well, unused but documented. Nothing is
+  rendered at runtime.
 * **A LINE failure is never fatal.** Approving or revoking a binding must succeed even when LINE is
   down or the token is wrong: those helpers swallow the error, log one WARNING with the LINE user id
   masked to its last 4 characters, and report an outcome string that the route puts in its response
@@ -58,9 +64,26 @@ logger = logging.getLogger("app.line_richmenu")
 MENU_NAME = "WorkDee-employee"
 CHAT_BAR_TEXT = "เมนูพนักงาน"
 MENU_SIZE = {"width": 2500, "height": 1686}
-TILE_WIDTH = MENU_SIZE["width"] // 2      # 1250
-TILE_HEIGHT = MENU_SIZE["height"] // 2    # 843
 AREA_COUNT = 4
+# LINE's usable-tap minimum: a smaller area is hard to hit on a phone (task 042 uses it to decide how far
+# the "ลงเวลา" pill's area has to be extended).
+MENU_AREA_MIN_SIDE = 250
+
+# ── Where the four buttons are in the picture (task 042) ──────────────────────────────────────────
+# Measured from the pixels of the User's own export (2026-09-30), not estimated from a screenshot: the
+# circles' outlines and the pill's fill were found by scanning the picture along lines through each button,
+# and each rectangle below is the visible shape plus a small margin. Coordinates are the **upload** file's
+# (2500 × 1686; the export is 2493 × 1681 and was scaled to exactly that).
+#
+# The "ลงเวลา" pill is only ~158 px tall, so its area is extended downwards to reach LINE's 250 px
+# usable-tap minimum — all of the extra height lies below the pill (empty sky between the pill and the
+# circles), never upwards over the title text. Order matches `LIVE_TILES`: checkin, rounds, history, portal.
+MENU_AREAS: tuple[tuple[int, int, int, int], ...] = (
+    (1550, 387, 451, 306),    # ลงเวลา — the pill, 6 px around it, plus the height it needs
+    (80, 832, 731, 720),      # รอบของฉัน — the left circle + 10 px
+    (885, 832, 732, 720),     # ประวัติลงเวลา — the middle circle + 10 px
+    (1689, 832, 732, 720),    # ศูนย์รวมบริการ — the right circle + 10 px
+)
 
 # Every tile is a live link since task 031: tile → (label, LIFF path suffix). This table is the one place
 # the menu's shape is written down; `build_menu_object()` and `menu_definition_problems()` read it.
@@ -113,11 +136,17 @@ MENU_MIN_ASPECT_RATIO = 1.45
 # LINE's error text is shown to an admin: one line of it, not a wall.
 LINE_ERROR_DETAIL_MAX_CHARS = 300
 
-# LINE allows 1 MB for a rich menu image; the repository picture is ~130 KB.
+# LINE allows 1 MB for a rich menu image; the shipped picture is ~494 KB (task 042).
 MENU_IMAGE_MAX_BYTES = 1024 * 1024
 
 IMAGE_DIR = BACKEND_DIR / "app" / "assets" / "rich_menu"
-IMAGE_PATH = IMAGE_DIR / "workdee-employee-menu.png"
+# The file that is uploaded: the User's design scaled to an exactly-accepted size (task 042). The names of
+# the older assets are elsewhere in this module's docstring.
+IMAGE_PATH = IMAGE_DIR / "workdee-employee-menu.jpg"
+IMAGE_SOURCE_PATH = IMAGE_DIR / "workdee-employee-menu-source.jpg"
+# PNG and JPEG are the only two formats LINE accepts for a rich menu picture.
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+JPEG_MAGIC = b"\xff\xd8\xff"
 
 LINE_TIMEOUT_SECONDS = 10.0
 
@@ -126,7 +155,7 @@ LINE_TIMEOUT_SECONDS = 10.0
 MENU_ID_TTL_SECONDS = 60.0
 
 MENU_MISSING_IMAGE_TH = "ไม่พบไฟล์รูปเมนู"
-MENU_BAD_IMAGE_TH = "ไฟล์รูปเมนูไม่ถูกต้อง (ต้องเป็น PNG ขนาด 2500 × 1686 และไม่เกิน 1 MB)"
+MENU_BAD_IMAGE_TH = "ไฟล์รูปเมนูไม่ถูกต้อง (ต้องเป็น PNG หรือ JPEG ขนาด 2500 × 1686 และไม่เกิน 1 MB)"
 
 
 class RichMenuImageError(Exception):
@@ -271,16 +300,15 @@ def safe_error(exc: Exception) -> str:
 
 
 def area_bounds() -> list[tuple[int, int, int, int]]:
-    """The four tile bounds in row-major order: (x, y, width, height).
+    """The four tap areas in `LIVE_TILES` order: (x, y, width, height), in the upload picture's pixels.
 
-    They tile the canvas exactly — no overlap, no gap — which is what the acceptance test asserts and
-    what the picture was drawn against (`assets/rich_menu/workdee-employee-menu.html`).
+    These come from `MENU_AREAS` at the top of the module, which records how each rectangle was measured
+    (task 042). They deliberately do **not** tile the canvas any more: the picture is a design with a
+    title, a pill, three circles and a footer line, and only the four buttons are buttons. The rules that
+    keep them honest (inside the picture, at least `MENU_AREA_MIN_SIDE` on each side, no overlap) live in
+    `menu_definition_problems()`, so a bad rectangle is caught before anything is sent to LINE.
     """
-    return [
-        (col * TILE_WIDTH, row * TILE_HEIGHT, TILE_WIDTH, TILE_HEIGHT)
-        for row in range(2)
-        for col in range(2)
-    ]
+    return list(MENU_AREAS)
 
 
 def tile_uri(liff_id: str, path: str) -> str:
@@ -361,6 +389,28 @@ def menu_definition_problems() -> list[str]:
     for data in SOON_POSTBACK_DATA:
         if not data.startswith(SOON_DATA_PREFIX):
             problems.append(f"postback data {data!r} must start with {SOON_DATA_PREFIX!r}")
+
+    # Geometry (task 042). The areas are drawn from a picture, so nothing else in the code can notice a
+    # rectangle that leaves the canvas, overlaps its neighbour or is too small to tap on a phone.
+    bounds = area_bounds()
+    width, height = MENU_SIZE["width"], MENU_SIZE["height"]
+    if len(bounds) != AREA_COUNT:
+        problems.append(f"{len(bounds)} areas are defined; the menu has {AREA_COUNT} buttons")
+    for index, (x, y, area_width, area_height) in enumerate(bounds):
+        if x < 0 or y < 0 or x + area_width > width or y + area_height > height:
+            problems.append(
+                f"area {index} ({x},{y},{area_width},{area_height}) is not inside {width}×{height}"
+            )
+        if area_width < MENU_AREA_MIN_SIDE or area_height < MENU_AREA_MIN_SIDE:
+            problems.append(
+                f"area {index} is {area_width}×{area_height}; a tappable area must be at least "
+                f"{MENU_AREA_MIN_SIDE}×{MENU_AREA_MIN_SIDE}"
+            )
+    for first, (ax, ay, aw, ah) in enumerate(bounds):
+        for second in range(first + 1, len(bounds)):
+            bx, by, bw, bh = bounds[second]
+            if ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah:
+                problems.append(f"areas {first} and {second} overlap")
     return problems
 
 
@@ -380,10 +430,11 @@ def tile_actions(liff_id: str) -> dict[int, dict]:
 def build_menu_object(liff_id: str) -> dict:
     """The rich menu object sent to `POST /v2/bot/richmenu`.
 
-    Four tiles in canvas (row-major) order, and **every one of them is a link to a LIFF page** since task
-    031: ลงเวลา → `/checkin`, รอบของฉัน → `/rounds`, ประวัติการลงเวลา → `/history`, ศูนย์รวมบริการ →
-    `/portal`. `selected: true` opens the menu as soon as the chat is opened, and `chatBarText` is what the
-    bar under the chat says when the menu is closed.
+    Four areas in `LIVE_TILES` order, and **every one of them is a link to a LIFF page** since task 031:
+    ลงเวลา → `/checkin`, รอบของฉัน → `/rounds`, ประวัติลงเวลา → `/history`, ศูนย์รวมบริการ → `/portal`. The
+    rectangles are the ones measured from the picture (`MENU_AREAS`), not a grid. `selected: true` opens the
+    menu as soon as the chat is opened, and `chatBarText` is what the bar under the chat says when the menu
+    is closed.
     """
     actions = tile_actions(liff_id)
     areas = []
@@ -512,6 +563,35 @@ def assert_menu_body(menu_object: dict) -> None:
         raise RichMenuBodyError("; ".join(problems))
 
 
+def menu_image_format(data: bytes) -> tuple[str, int, int] | None:
+    """(content type, width, height) for a picture LINE accepts, or None.
+
+    Decided by the **magic bytes**, never by the file name: the upload's `Content-Type` has to match what
+    the file really is, and the size has to be one LINE accepts. The width/height are read from the PNG's
+    IHDR and from the JPEG's SOF marker — the same two fields each header carries, so no image decoding is
+    needed (and this venv has no image library, which is also why the 042 scaling happened in a browser).
+    """
+    if data[:8] == PNG_MAGIC and len(data) >= 24:
+        width, height = struct.unpack(">II", data[16:24])
+        return "image/png", width, height
+    if data[:3] == JPEG_MAGIC:
+        index = 2
+        while index + 9 < len(data):
+            if data[index] != 0xFF:
+                index += 1
+                continue
+            marker = data[index + 1]
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB,
+                          0xCD, 0xCE, 0xCF):
+                height, width = struct.unpack(">HH", data[index + 5:index + 9])
+                return "image/jpeg", width, height
+            if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+                index += 2
+                continue
+            index += 2 + struct.unpack(">H", data[index + 2:index + 4])[0]
+    return None
+
+
 def read_menu_image(path: Path | None = None) -> bytes:
     """The picture bytes, validated against LINE's requirements before anything is sent.
 
@@ -524,9 +604,10 @@ def read_menu_image(path: Path | None = None) -> bytes:
     data = target.read_bytes()
     if len(data) > MENU_IMAGE_MAX_BYTES:
         raise RichMenuImageError(MENU_BAD_IMAGE_TH)
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
+    described = menu_image_format(data)
+    if described is None:
         raise RichMenuImageError(MENU_BAD_IMAGE_TH)
-    width, height = struct.unpack(">II", data[16:24])
+    _, width, height = described
     if (width, height) != (MENU_SIZE["width"], MENU_SIZE["height"]):
         raise RichMenuImageError(MENU_BAD_IMAGE_TH)
     return data
@@ -569,10 +650,19 @@ async def create_menu(token: str, menu_object: dict) -> str:
 
 
 async def upload_menu_image(token: str, menu_id: str, image: bytes) -> None:
+    """Upload the picture, announcing the type its bytes really have (task 042: JPEG or PNG).
+
+    The `Content-Type` used to be hard-coded to `image/png`; LINE rejects a picture whose announced type
+    does not match the file, and the picture now ships as a JPEG. An image that is neither PNG nor JPEG is
+    refused here rather than sent as something LINE would have to reject.
+    """
+    described = menu_image_format(image)
+    if described is None:
+        raise RichMenuImageError(MENU_BAD_IMAGE_TH)
     async with _client() as client:
         res = await client.post(
             _data_api_url(f"/v2/bot/richmenu/{menu_id}/content"),
-            headers={**_auth(token), "Content-Type": "image/png"},
+            headers={**_auth(token), "Content-Type": described[0]},
             content=image,
         )
         _raise_for_line_status(res, "upload", token)
