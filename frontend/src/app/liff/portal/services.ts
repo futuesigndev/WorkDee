@@ -36,8 +36,8 @@ export const PORTAL_SERVICES: PortalService[] = [
   { key: "checkin", title: "ลงเวลา", description: "บันทึกเวลาเข้า–ออกงานพร้อมรูปถ่ายและตำแหน่ง", href: "/liff/checkin", status: "live" },
   { key: "rounds", title: "รอบลงเวลาของฉัน", description: "ดูรอบ เวลา และสถานที่ลงเวลาของคุณ", href: "/liff/rounds", status: "live" },
   { key: "history", title: "ประวัติการลงเวลา", description: "ดูสิ่งที่ระบบบันทึกไว้ให้คุณย้อนหลัง 12 เดือน", href: "/liff/history", status: "live" },
+  { key: "news", title: "ข่าวสารองค์กร", description: "ประกาศและข่าวของบริษัทที่ฝ่ายบุคคลส่งถึงพนักงาน", href: "/liff/news", status: "live" },
   // ── coming (visible on purpose: staff see what is next, the User switches each one on later) ──────
-  { key: "news", title: "ข่าวสารองค์กร", description: "ประกาศและข่าวของบริษัทที่ฝ่ายบุคคลส่งถึงพนักงาน", status: "soon" },
   { key: "faq", title: "ถามตอบ HR", description: "คำถามที่พนักงานถามบ่อย พร้อมคำตอบจากฝ่ายบุคคล", status: "soon" },
   { key: "feedback", title: "ส่งข้อเสนอแนะ (ไม่ระบุตัวตน)", description: "ส่งความคิดเห็นถึงบริษัทโดยไม่ต้องแจ้งชื่อ", status: "soon" },
   { key: "payslip", title: "สลิปเงินเดือน", description: "ดูสลิปเงินเดือนของตัวเองย้อนหลัง", status: "soon" },

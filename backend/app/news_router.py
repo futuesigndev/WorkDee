@@ -22,6 +22,7 @@ Design notes worth keeping in mind while reading:
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -34,6 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user_id, require_permission
+from app.line_identity import (
+    LineIdentity,
+    get_bound_employee,
+    get_verified_line_identity,
+)
 from app.models import AuditLog, NewsCategory, NewsItem
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -67,6 +73,22 @@ CATEGORY_NAME_TAKEN_TH = "มีชื่อประเภทข่าวนี
 CATEGORY_INACTIVE_TH = "ประเภทข่าวนี้ถูกปิดใช้งาน กรุณาเลือกประเภทข่าวที่ใช้งานอยู่"
 WITHDRAW_DRAFT_TH = "ข่าวที่เป็นฉบับร่างยังถอนไม่ได้ กรุณาลบฉบับร่างแทน"
 DELETE_NOT_DRAFT_TH = "ลบได้เฉพาะฉบับร่าง — ข่าวที่เผยแพร่แล้วให้ใช้การถอนข่าว"
+
+# ─── Employee side (task 039) ─────────────────────────────────────────────────
+# The LIFF page reads only these two routes. Identity is a verified LINE ID token plus an APPROVED
+# binding — the same dependency the attendance `/me/*` routes use — so the audience is exactly "every
+# employee with an approved binding", and an unbound/pending/rejected/revoked account is refused with
+# the identical Thai sentence the other employee routes give.
+#
+# Reads are **not** audited (the `attendance/me/history` convention: a read writes nothing). A response
+# carries no author, no status, no binding and no audit data — an employee may learn that a news item
+# is published, and nothing else. A draft, a withdrawn item, an unknown id and a malformed id all
+# answer the *same* 404, so a withdrawn item cannot be distinguished from one that never existed.
+NEWS_ME_PAGE_SIZE = 20
+NEWS_ME_PREVIEW_CHARS = 120
+NEWS_ME_NOT_FOUND_TH = "ข่าวนี้ไม่มีให้อ่านแล้ว"
+CURSOR_PAIR_TH = "ตัวบอกตำแหน่งของรายการถัดไปไม่ครบ (ต้องส่ง before และ before_id มาคู่กัน)"
+CURSOR_TIMEZONE_TH = "เวลาของตัวบอกตำแหน่งต้องระบุเขตเวลา (เช่น 2026-09-30T07:00:00+00:00)"
 
 # Field names → the Thai words the pages use, for messages built here.
 CATEGORY_FIELD_LABELS = {"name": "ชื่อประเภทข่าว", "sort_order": "ลำดับ", "is_active": "สถานะใช้งาน"}
@@ -358,6 +380,170 @@ async def update_category(
         await db.execute(select(func.count(NewsItem.id)).where(NewsItem.category_id == row.id))
     ).scalar() or 0
     return _category_dict(row, count)
+
+
+# ─── Employee side: the LIFF page reads these (task 039) ──────────────────────
+#
+# They are deliberately registered **before** the admin `/{news_id}` routes below: Starlette matches
+# routes in registration order, so `/news/me` must claim its path before `/news/{news_id}` can try to
+# read "me" as a uuid (which would answer 422 from the admin route instead of 200/401 here).
+
+def _is_joiner(char: str) -> bool:
+    """Whether `char` attaches to the character in front of it and must not start a preview.
+
+    Covers the three ways a "single visible character" is really several code points here: a Thai
+    combining mark (or any combining category), a zero-width joiner / variation selector (emoji
+    sequences), an emoji skin-tone modifier and a regional indicator (the second half of a flag).
+    """
+    return (
+        unicodedata.combining(char) != 0
+        or unicodedata.category(char) in ("Mn", "Mc", "Me")
+        or char in ("\u200d", "\ufe0e", "\ufe0f")
+        or 0x1F3FB <= ord(char) <= 0x1F3FF
+        or 0x1F1E6 <= ord(char) <= 0x1F1FF
+    )
+
+
+def _preview(body: str, limit: int = NEWS_ME_PREVIEW_CHARS) -> str:
+    """A one-paragraph preview of a news body, cut on a character boundary.
+
+    Whitespace runs collapse to single spaces (a card shows one paragraph; the full body with its line
+    breaks is what the detail view is for). The cut counts **code points**, exactly like the 150/5000
+    limits do, and it moves forward over any code point that would otherwise be split from the one
+    before it and back off a trailing zero-width joiner / variation selector — so a preview can never
+    end with half an emoji, a bare Thai tone mark or a dangling joiner. `…` marks a real cut.
+    """
+    text = " ".join(body.split())
+    if len(text) <= limit:
+        return text
+
+    chars = list(text)
+    cut = limit
+    while cut < len(chars) and _is_joiner(chars[cut]):
+        cut += 1
+    while cut > 0 and chars[cut - 1] in ("\u200d", "\ufe0e", "\ufe0f"):
+        cut -= 1
+    return text[:cut].rstrip() + "…"
+
+
+def _me_item_dict(row: NewsItem, category_name: str) -> dict:
+    """One row of the employee list: six keys, no body, no author, no status (task 039)."""
+    return {
+        "id": str(row.id),
+        "title": row.title,
+        "category": category_name,
+        "published_at": _iso(row.published_at),
+        "preview": _preview(row.body),
+    }
+
+
+async def _published_categories(db: AsyncSession) -> list[dict]:
+    """The categories that still have at least one published item, in `sort_order` (task 039).
+
+    One query with an `EXISTS` subquery: no duplicates, no counting, and it needs nothing from
+    `news_categories.is_active` — HR deactivating a category hides it from the HR picker, but news that
+    was already published under it keeps showing (and keeps its filter chip while any such item exists).
+    """
+    has_published = (
+        select(NewsItem.id)
+        .where(NewsItem.category_id == NewsCategory.id, NewsItem.status == STATUS_PUBLISHED)
+        .exists()
+    )
+    rows = (await db.execute(
+        select(NewsCategory.id, NewsCategory.name)
+        .where(has_published)
+        .order_by(NewsCategory.sort_order.asc(), NewsCategory.name.asc())
+    )).all()
+    return [{"id": str(row[0]), "name": row[1]} for row in rows]
+
+
+@router.get("/me")
+async def list_my_news(
+    category_id: uuid.UUID | None = Query(None, description="กรองตามประเภทข่าว (ไม่ส่ง = ทุกประเภท)"),
+    before: datetime | None = Query(None, description="published_at ของรายการสุดท้ายที่เห็นแล้ว"),
+    before_id: uuid.UUID | None = Query(None, description="id ของรายการสุดท้ายที่เห็นแล้ว"),
+    db: AsyncSession = Depends(get_db),
+    identity: LineIdentity = Depends(get_verified_line_identity),
+):
+    """Published news, newest first, for the LIFF page (task 039).
+
+    Newest first means `published_at` descending with `id` as the tie-break, and the cursor walks the
+    same pair — so an item published between page 1 and page 2 can neither repeat an item already
+    shown nor skip one (`page` numbers would do both). A malformed cursor is a Thai 422, never a 500
+    and never "start from the top and dump everything".
+
+    The list carries a preview only: the full body belongs to the detail route, which is also what
+    makes "one item is withdrawn while the employee is reading the list" harmless.
+    """
+    await get_bound_employee(identity, db)  # the APPROVED-binding gate only; news is not personal
+
+    if (before is None) != (before_id is None):
+        raise HTTPException(status_code=422, detail=CURSOR_PAIR_TH)
+    if before is not None and before.tzinfo is None:
+        raise HTTPException(status_code=422, detail=CURSOR_TIMEZONE_TH)
+
+    stmt = (
+        select(NewsItem, NewsCategory.name)
+        .join(NewsCategory, NewsItem.category_id == NewsCategory.id)
+        .where(NewsItem.status == STATUS_PUBLISHED)
+    )
+    if category_id is not None:
+        stmt = stmt.where(NewsItem.category_id == category_id)
+    if before is not None and before_id is not None:
+        stmt = stmt.where(
+            (NewsItem.published_at < before)
+            | ((NewsItem.published_at == before) & (NewsItem.id < before_id))
+        )
+
+    # `+ 1` row answers "is there another page" without a COUNT over the whole table.
+    rows = (await db.execute(
+        stmt.order_by(NewsItem.published_at.desc(), NewsItem.id.desc()).limit(NEWS_ME_PAGE_SIZE + 1)
+    )).all()
+    page, extra = rows[:NEWS_ME_PAGE_SIZE], rows[NEWS_ME_PAGE_SIZE:]
+
+    cursor = None
+    if extra and page:
+        last = page[-1][0]
+        cursor = {"before": _iso(last.published_at), "before_id": str(last.id)}
+
+    return {
+        "items": [_me_item_dict(row, category_name) for row, category_name in page],
+        "categories": await _published_categories(db),
+        "next": cursor,
+        "page_size": NEWS_ME_PAGE_SIZE,
+    }
+
+
+@router.get("/me/{news_id}")
+async def get_my_news(
+    news_id: str,
+    db: AsyncSession = Depends(get_db),
+    identity: LineIdentity = Depends(get_verified_line_identity),
+):
+    """One published news item with its full body (task 039).
+
+    The path parameter is a **string**, not a uuid: a malformed id must answer the same 404 as an
+    unknown one, and letting FastAPI's type validation reject it would answer 422 instead — which is
+    itself a hint that the id's *shape* was the problem. A draft and a withdrawn item answer it too.
+    """
+    await get_bound_employee(identity, db)
+    try:
+        parsed = uuid.UUID(news_id)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail=NEWS_ME_NOT_FOUND_TH) from None
+
+    row = (await db.execute(
+        select(NewsItem, NewsCategory.name)
+        .join(NewsCategory, NewsItem.category_id == NewsCategory.id)
+        .where(NewsItem.id == parsed, NewsItem.status == STATUS_PUBLISHED)
+    )).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=NEWS_ME_NOT_FOUND_TH)
+
+    item, category_name = row
+    # The body goes out exactly as stored — plain text with `\n` line breaks. No HTML, no escaping, no
+    # link detection: the page renders it as text, so a `<script>` in a body is just those characters.
+    return {**_me_item_dict(item, category_name), "body": item.body}
 
 
 # ─── News items ───────────────────────────────────────────────────────────────
