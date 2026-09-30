@@ -237,7 +237,10 @@ export default function MenuManagementPage() {
         setMenuToDelete(null)
         fetchMenus()
       } else {
-        showMsg("error", "ลบเมนูไม่สำเร็จ")
+        // The server refuses deleting a menu that still has children (task 045/D20) and answers a Thai
+        // `detail` with the count — show it instead of the generic message.
+        const err = await res.json().catch(() => null)
+        showMsg("error", err?.detail || "ลบเมนูไม่สำเร็จ")
       }
     } catch (err) { showMsg("error", permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")) }
     finally { setDeleting(false) }
@@ -359,6 +362,9 @@ export default function MenuManagementPage() {
                 const parentName = menu.parent_id
                   ? menus.find(m => m.id === menu.parent_id)?.label
                   : null
+                // A menu with children cannot be deleted any more (task 045/D20): the server refuses it, and
+                // the page knows the children already — no extra request needed to say so.
+                const childCount = menus.filter(m => m.parent_id === menu.id).length
                 return (
                   <tr
                     key={menu.id}
@@ -446,8 +452,11 @@ export default function MenuManagementPage() {
                         </button>
                         <button
                           onClick={() => setMenuToDelete(menu)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-error/10 text-base-content/40 hover:text-error transition-all"
-                          title="ลบ"
+                          disabled={childCount > 0}
+                          title={childCount > 0
+                            ? `เมนูนี้มีเมนูย่อย ${childCount} รายการ กรุณาลบหรือย้ายเมนูย่อยก่อน`
+                            : "ลบ"}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-error/10 text-base-content/40 hover:text-error transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-base-content/40"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -666,11 +675,6 @@ export default function MenuManagementPage() {
                 <h3 className="font-black text-base mb-1">ลบเมนูนี้?</h3>
                 <p className="text-sm text-base-content/60">
                   ต้องการลบ <strong>&quot;{menuToDelete.label}&quot;</strong> ใช่หรือไม่?
-                  {!menuToDelete.parent_id && (
-                    <span className="block mt-1 text-error/80 text-xs font-bold">
-                      ⚠ ระบบจะลบเมนูย่อยทั้งหมดด้วย
-                    </span>
-                  )}
                 </p>
               </div>
               <div className="flex gap-3">

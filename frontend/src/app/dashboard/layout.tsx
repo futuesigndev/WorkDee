@@ -25,13 +25,16 @@ import {
   BarChart2,
   Briefcase,
   Lock,
-  Home
+  Home,
+  Loader2
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PRODUCT_NAME } from '@/lib/brand'
 import { API_URL, apiFetch, SessionExpiredError } from '@/lib/api'
 import { PERMISSION_DENIED_MESSAGE, isPermissionDenied } from '@/lib/errors'
+// The shell's own AccessDenied screen, for a page this account has no menu for (task 045/D7).
+import AccessDenied from '@/components/AccessDenied'
 
 // Icon mapping to handle dynamic strings from DB
 const IconMap: Record<string, LucideIcon> = {
@@ -62,6 +65,9 @@ interface MenuItem {
   icon: string;
   parent_id: string | null;
   order: number;
+  // `false` marks a **container**: a parent group returned only so a granted child has somewhere to sit.
+  // A container's own page is not granted to this account (task 045/D6).
+  granted?: boolean;
   children?: MenuItem[];
 }
 
@@ -236,6 +242,25 @@ export default function DashboardLayout({
   const currentViewLabel =
     menuItems.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.path === pathname)?.label
     || 'ภาพรวม';
+
+  // Which pages this account may open. The menu list is the only permission source the shell has, and a
+  // `granted: false` container never carries a page of its own (task 045/D6). Until the list arrives the
+  // page is not rendered at all: mounting first and replacing the page with AccessDenied afterwards let an
+  // un-granted page run its own data calls for about a second before it was denied (task 045/D7/D8).
+  const grantedPaths = React.useMemo(() => {
+    const paths = new Set<string>()
+    const walk = (items: MenuItem[]) => {
+      for (const item of items) {
+        if (item.granted !== false && item.path) paths.add(item.path)
+        if (item.children?.length) walk(item.children)
+      }
+    }
+    walk(menuItems)
+    return paths
+  }, [menuItems])
+  // If the menu list itself is forbidden (403) the shell cannot judge paths — leave the page to its own
+  // guard, exactly as before this change.
+  const pageGranted = loading || menusDenied || grantedPaths.has(pathname)
 
   // Identity card values: the name (employee id when the name is empty), the role name, and initials
   // derived from whatever is displayed. Roles are stored as data ("Admin", "Supervisor", …).
@@ -427,7 +452,15 @@ export default function DashboardLayout({
         {/* Page Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-8">
           <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {children}
+            {loading ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : pageGranted ? (
+              children
+            ) : (
+              <AccessDenied />
+            )}
           </div>
         </main>
       </div>

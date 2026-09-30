@@ -166,12 +166,17 @@ export default function RolesPermissionsPage() {
         setAllowedMenuIds(prev => [...new Set([...prev, menuId, ...childIds])])
       }
     } else {
-      // Toggle child menu
-      setAllowedMenuIds(prev => 
-        prev.includes(menuId) 
-          ? prev.filter(id => id !== menuId) 
-          : [...prev, menuId]
-      )
+      // Toggle a child menu. The server requires the parent group to be granted with it (task 045/D6),
+      // so ticking a child ticks its parent too — deliberately *without* the parent's own child-cascade,
+      // otherwise one child would drag in its siblings. Unticking a child leaves the parent alone.
+      const parentId = menu?.parent_id
+      setAllowedMenuIds(prev => {
+        if (prev.includes(menuId)) return prev.filter(id => id !== menuId)
+        const next = new Set(prev)
+        next.add(menuId)
+        if (parentId) next.add(parentId)
+        return [...next]
+      })
     }
   }
 
@@ -186,6 +191,11 @@ export default function RolesPermissionsPage() {
       })
       if (res.ok) {
         alert("บันทึกสิทธิ์แล้ว")
+      } else {
+        // The server refuses a grant whose child would have no visible group (task 045/D6) — its Thai
+        // message names the parent menu, so it has to be shown rather than swallowed.
+        const error = await res.json().catch(() => null)
+        alert(error?.detail || "บันทึกสิทธิ์ไม่สำเร็จ")
       }
     } catch (err) {
       alert(permissionErrorMessage(err, "บันทึกสิทธิ์ไม่สำเร็จ"))
@@ -234,8 +244,11 @@ export default function RolesPermissionsPage() {
         }
         fetchData()
       } else {
-        const error = await res.json()
-        alert(error.detail || "ลบบทบาทไม่สำเร็จ")
+        // Parsed defensively: a 500 answers with a plain-text body, and `res.json()` throwing there used
+        // to send the admin to the catch below — "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" for a server-side error
+        // (task 045/D5). A refusal with a JSON `detail` (e.g. the role is in use) is shown as written.
+        const error = await res.json().catch(() => null)
+        alert(error?.detail || "ลบบทบาทไม่สำเร็จ")
       }
     } catch (err) {
       alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))

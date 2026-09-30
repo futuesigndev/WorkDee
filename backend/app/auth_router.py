@@ -190,26 +190,55 @@ async def get_user_menus(
     )
     result = await db.execute(stmt)
     menus = result.scalars().all()
-    
-    # Organize into hierarchy
-    menu_map = {str(m.id): {
-        "id": str(m.id),
-        "key": m.key,
-        "label": m.label,
-        "path": m.path,
-        "icon": m.icon,
-        "order": m.order,
-        "parent_id": str(m.parent_id) if m.parent_id else None,
-        "children": []
-    } for m in menus}
-    
+
+    def node(menu: LocalMenu, granted: bool) -> dict:
+        return {
+            "id": str(menu.id),
+            "key": menu.key,
+            "label": menu.label,
+            "path": menu.path,
+            "icon": menu.icon,
+            "order": menu.order,
+            "parent_id": str(menu.parent_id) if menu.parent_id else None,
+            # `granted: false` marks a **container** — a parent returned only so a granted child has a
+            # group to sit in. The shell keeps the container's own page closed to this role.
+            "granted": granted,
+            "children": [],
+        }
+
+    menu_map = {str(m.id): node(m, True) for m in menus}
+
+    # A granted child whose parent is not granted used to be dropped entirely (`elif not m.parent_id`),
+    # which left the user with an empty sidebar and an "access denied" shell (task 045/D6). The parent
+    # now comes back as a container instead. Inactive parents are still fetched: hiding the group would
+    # hide the granted child with it.
+    missing_parent_ids = {
+        m.parent_id for m in menus if m.parent_id and str(m.parent_id) not in menu_map
+    }
+    for _ in range(10):  # the seeded tree is two levels deep; the bound is a guard, not a feature
+        if not missing_parent_ids:
+            break
+        parents = (await db.execute(
+            select(LocalMenu).where(LocalMenu.id.in_(missing_parent_ids))
+        )).scalars().all()
+        missing_parent_ids = set()
+        for parent in parents:
+            if str(parent.id) in menu_map:
+                continue
+            menu_map[str(parent.id)] = node(parent, False)
+            if parent.parent_id and str(parent.parent_id) not in menu_map:
+                missing_parent_ids.add(parent.parent_id)
+
     hierarchy = []
-    for m_id, m_data in menu_map.items():
-        if m_data["parent_id"] and m_data["parent_id"] in menu_map:
-            menu_map[m_data["parent_id"]]["children"].append(m_data)
-        elif not m_data["parent_id"]:
+
+    for m_data in menu_map.values():
+        parent_id = m_data["parent_id"]
+        if parent_id and parent_id in menu_map and parent_id != m_data["id"]:
+            menu_map[parent_id]["children"].append(m_data)
+        else:
+            # Top level — or a parent row that does not exist at all: show the menu rather than drop it.
             hierarchy.append(m_data)
-            
+
     # Sort by order
     hierarchy.sort(key=lambda x: x["order"])
     for root in hierarchy:

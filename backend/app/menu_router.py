@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from typing import List, Optional
 from app.database import get_db
 from app.models import LocalMenu, RoleMenuPermission, LocalRole
@@ -139,23 +139,24 @@ async def delete_menu(
     db: AsyncSession = Depends(get_db),
     _current_user = Depends(require_permission("menus"))
 ):
-    """Delete a menu and its associated role permissions."""
+    """Delete a menu and its role grants. A menu that still has children is refused (task 045/D20)."""
     menu = (await db.execute(
         select(LocalMenu).where(LocalMenu.id == menu_id)
     )).scalar_one_or_none()
     if not menu:
         raise HTTPException(status_code=404, detail="ไม่พบเมนูนี้")
 
-    # Delete child menus' permissions first
-    child_menus = (await db.execute(
-        select(LocalMenu).where(LocalMenu.parent_id == menu_id)
-    )).scalars().all()
-
-    for child in child_menus:
-        await db.execute(
-            delete(RoleMenuPermission).where(RoleMenuPermission.menu_id == child.id)
+    # This used to take every child menu (and their grants) with it, with nothing but the dialog's
+    # wording in the way. Losing menus nobody asked to delete is worse than a refusal, so the children
+    # are counted first; the page disables the control for exactly this case and shows the same reason.
+    child_count = (await db.execute(
+        select(func.count()).select_from(LocalMenu).where(LocalMenu.parent_id == menu_id)
+    )).scalar_one()
+    if child_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"เมนูนี้มีเมนูย่อย {child_count} รายการ กรุณาลบหรือย้ายเมนูย่อยก่อน",
         )
-        await db.delete(child)
 
     # Delete this menu's permissions
     await db.execute(
