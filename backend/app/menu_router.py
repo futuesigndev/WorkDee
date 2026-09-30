@@ -1,14 +1,47 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from typing import List, Optional
 from app.database import get_db
-from app.models import LocalMenu, RoleMenuPermission, LocalRole
-from app.dependencies import require_permission
+from app.models import AuditLog, LocalMenu, RoleMenuPermission, LocalRole
+from app.dependencies import get_current_user_id, require_permission
 from pydantic import BaseModel
 import uuid
 
 router = APIRouter(prefix="/menus", tags=["Menu Management"])
+
+# ─── Audit (task 046) ─────────────────────────────────────────────────────────
+# Every menu write leaves one traceable row in the same transaction as the change: a refusal (the 045
+# rule about child menus) writes nothing, and so does an edit that changes nothing. A row carries the
+# menu's **key** and id plus the NAMES of the fields that changed — never the row itself, and the
+# delete carries a count of the grants that went with it, never the role names.
+MENU_FIELD_LABELS = {
+    "label": "ชื่อเมนู",
+    "path": "ลิงก์หน้า",
+    "icon": "ไอคอน",
+    "order": "ลำดับ",
+    "is_active": "สถานะใช้งาน",
+}
+
+# The order a PATCH applies its fields in (the toggle is the last one: `is_active`).
+MENU_UPDATE_FIELDS = ("label", "path", "icon", "order", "is_active")
+
+
+def _ip_address(req: Request) -> str:
+    """The client IP the way the neighbours record it (a request without one falls back)."""
+    return req.client.host if req.client else "127.0.0.1"
+
+
+def _write_audit(db: AsyncSession, action: str, actor_id: str, details: str,
+                 metadata: dict, req: Request) -> None:
+    """One audit row per committed write. Key / id / field names / counts only."""
+    db.add(AuditLog(
+        action=action,
+        actor_id=actor_id,
+        details=details,
+        ip_address=_ip_address(req),
+        metadata_json=metadata,
+    ))
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +88,9 @@ async def list_menus(
 @router.post("", response_model=MenuResponse, status_code=201)
 async def create_menu(
     payload: MenuCreateRequest,
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("menus"))
 ):
     """Create a new menu and auto-grant access to Admin role."""
@@ -98,6 +133,16 @@ async def create_menu(
             can_access=True
         ))
 
+    _write_audit(
+        db, "MENU_CREATED", actor_id,
+        f"สร้างเมนู {new_menu.key}",
+        {
+            "menu_id": str(new_menu.id),
+            "key": new_menu.key,
+            "parent_id": str(new_menu.parent_id) if new_menu.parent_id else None,
+        },
+        req,
+    )
     await db.commit()
     await db.refresh(new_menu)
     return new_menu
@@ -107,36 +152,46 @@ async def create_menu(
 async def update_menu(
     menu_id: uuid.UUID,
     payload: MenuUpdateRequest,
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("menus"))
 ):
-    """Update menu properties."""
+    """Update menu properties. A body that changes nothing is a 200 with no write and no audit row."""
     menu = (await db.execute(
         select(LocalMenu).where(LocalMenu.id == menu_id)
     )).scalar_one_or_none()
     if not menu:
         raise HTTPException(status_code=404, detail="ไม่พบเมนูนี้")
 
-    if payload.label is not None:
-        menu.label = payload.label
-    if payload.path is not None:
-        menu.path = payload.path
-    if payload.icon is not None:
-        menu.icon = payload.icon
-    if payload.order is not None:
-        menu.order = payload.order
-    if payload.is_active is not None:
-        menu.is_active = payload.is_active
+    changed: list[str] = []
+    for field in MENU_UPDATE_FIELDS:
+        value = getattr(payload, field)
+        if value is None:
+            continue
+        if value != getattr(menu, field):
+            setattr(menu, field, value)
+            changed.append(field)
 
-    await db.commit()
-    await db.refresh(menu)
+    if changed:
+        labels = ", ".join(MENU_FIELD_LABELS[field] for field in changed)
+        _write_audit(
+            db, "MENU_UPDATED", actor_id,
+            f"แก้ไขเมนู {menu.key}: {labels}",
+            {"menu_id": str(menu_id), "key": menu.key, "fields": changed},
+            req,
+        )
+        await db.commit()
+        await db.refresh(menu)
     return menu
 
 
 @router.delete("/{menu_id}")
 async def delete_menu(
     menu_id: uuid.UUID,
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("menus"))
 ):
     """Delete a menu and its role grants. A menu that still has children is refused (task 045/D20)."""
@@ -159,10 +214,22 @@ async def delete_menu(
         )
 
     # Delete this menu's permissions
+    grants_removed = (await db.execute(
+        select(func.count()).select_from(RoleMenuPermission)
+        .where(RoleMenuPermission.menu_id == menu_id)
+    )).scalar_one()
     await db.execute(
         delete(RoleMenuPermission).where(RoleMenuPermission.menu_id == menu_id)
     )
+    menu_key = menu.key
+    menu_label = menu.label  # the response message keeps saying the label it always said
     await db.delete(menu)
+    _write_audit(
+        db, "MENU_DELETED", actor_id,
+        f"ลบเมนู {menu_key}",
+        {"menu_id": str(menu_id), "key": menu_key, "grants_removed": grants_removed},
+        req,
+    )
     await db.commit()
 
-    return {"status": "success", "message": f"Menu '{menu.label}' deleted"}
+    return {"status": "success", "message": f"Menu '{menu_label}' deleted"}

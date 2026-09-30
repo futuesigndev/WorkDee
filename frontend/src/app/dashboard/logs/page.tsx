@@ -356,6 +356,17 @@ export default function LogsPage() {
               <option value="USER_PROVISIONED">เพิ่มผู้ใช้งาน (USER_PROVISIONED)</option>
               <option value="USER_ACTIVATED">เปิดใช้งานผู้ใช้งาน (USER_ACTIVATED)</option>
               <option value="USER_DEPROVISIONED">ปิดใช้งานผู้ใช้งาน (USER_DEPROVISIONED)</option>
+              {/* Task 046: this list is static, so every new action code has to be added here by hand
+                  or the row it writes is only reachable through "ทุกการทำงาน" and never filterable. */}
+              <option value="SETTINGS_UPDATED">แก้ไขการตั้งค่าระบบ (SETTINGS_UPDATED)</option>
+              <option value="ROLE_CREATED">สร้างบทบาท (ROLE_CREATED)</option>
+              <option value="ROLE_UPDATED">แก้ไขบทบาท (ROLE_UPDATED)</option>
+              <option value="ROLE_PERMISSIONS_CHANGED">แก้ไขสิทธิ์เมนูของบทบาท (ROLE_PERMISSIONS_CHANGED)</option>
+              <option value="ROLE_DELETED">ลบบทบาท (ROLE_DELETED)</option>
+              <option value="MENU_CREATED">สร้างเมนู (MENU_CREATED)</option>
+              <option value="MENU_UPDATED">แก้ไขเมนู (MENU_UPDATED)</option>
+              <option value="MENU_DELETED">ลบเมนู (MENU_DELETED)</option>
+              <option value="EVENT_LINE_BINDING_REJECTED">ไม่อนุมัติคำขอผูกบัญชี LINE (EVENT_LINE_BINDING_REJECTED)</option>
             </select>
           </div>
         </div>

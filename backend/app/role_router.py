@@ -1,14 +1,39 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from typing import List, Optional
 from app.database import get_db
-from app.models import LocalRole, LocalMenu, RoleMenuPermission, LocalUser
-from app.dependencies import require_permission
+from app.models import AuditLog, LocalRole, LocalMenu, RoleMenuPermission, LocalUser
+from app.dependencies import get_current_user_id, require_permission
 from pydantic import BaseModel
 import uuid
 
 router = APIRouter(prefix="/roles", tags=["Role & Permission Management"])
+
+# ─── Audit (task 046) ─────────────────────────────────────────────────────────
+# Every role write leaves one traceable row, written in the same transaction as the change: a
+# refusal (role still held, built-in role, the 045 parent rule) writes nothing, and so does a save
+# that changes nothing. The rows carry ids, field NAMES, a count and menu **keys** — never a label
+# list, never a description's text. The Thai sentence names the entity; the machine-readable half
+# (ids, keys) lives in `metadata_json`, the same split 023/036 use.
+ROLE_FIELD_LABELS = {"name": "ชื่อบทบาท", "description": "คำอธิบาย"}
+
+
+def _ip_address(req: Request) -> str:
+    """The client IP the way the neighbours record it (a request without one falls back)."""
+    return req.client.host if req.client else "127.0.0.1"
+
+
+def _write_audit(db: AsyncSession, action: str, actor_id: str, details: str,
+                 metadata: dict, req: Request) -> None:
+    """One audit row per committed write. Ids / field names / keys / counts only."""
+    db.add(AuditLog(
+        action=action,
+        actor_id=actor_id,
+        details=details,
+        ip_address=_ip_address(req),
+        metadata_json=metadata,
+    ))
 
 class RoleResponse(BaseModel):
     id: uuid.UUID
@@ -69,7 +94,9 @@ async def get_role_permissions(
 async def update_role_permissions(
     role_id: uuid.UUID, 
     payload: PermissionUpdate, 
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("roles"))
 ):
     # A child menu is shown inside its parent group, so a grant for the child alone would leave the user
@@ -119,6 +146,30 @@ async def update_role_permissions(
             )
 
     # 1. Clear existing permissions for this role
+    # The role row is read for the audit trail's Thai sentence only: an unknown role id keeps its old
+    # behaviour (the insert still fails on the FK) — this adds no refusal of its own.
+    role = (await db.execute(select(LocalRole).where(LocalRole.id == role_id))).scalar_one_or_none()
+    role_name = role.name if role is not None else str(role_id)
+
+    # The comparison is on menu **ids**, exactly what the request carries: resolving keys would make
+    # an unknown id look like an empty set and turn today's 500 into a silent no-op.
+    old_ids = set((await db.execute(
+        select(RoleMenuPermission.menu_id).where(RoleMenuPermission.role_id == role_id)
+    )).scalars().all())
+    requested_ids = set(to_insert)
+
+    if old_ids == requested_ids:
+        # Saving the set the role already has is not a write: no delete, no insert, no audit row
+        # (the same rule the empty PATCH of task 016 already follows).
+        return {"status": "success", "updated_count": len(to_insert)}
+
+    fresh_keys = set((await db.execute(
+        select(LocalMenu.key).where(LocalMenu.id.in_(requested_ids))
+    )).scalars().all()) if requested_ids else set()
+    old_keys = set((await db.execute(
+        select(LocalMenu.key).where(LocalMenu.id.in_(old_ids))
+    )).scalars().all()) if old_ids else set()
+
     await db.execute(delete(RoleMenuPermission).where(RoleMenuPermission.role_id == role_id))
     
     # 2. Add new permissions
@@ -127,6 +178,23 @@ async def update_role_permissions(
         for m_id in to_insert
     ]
     db.add_all(new_perms)
+    added = sorted(fresh_keys - old_keys)
+    removed = sorted(old_keys - fresh_keys)
+    _write_audit(
+        db,
+        "ROLE_PERMISSIONS_CHANGED",
+        actor_id,
+        (f"แก้ไขสิทธิ์เมนูของบทบาท {role_name}: รวม {len(fresh_keys)} เมนู"
+         f" (เพิ่ม {len(added)} / ลบ {len(removed)})"),
+        {
+            "role_id": str(role_id),
+            "role_name": role_name,
+            "menu_count": len(fresh_keys),
+            "added_keys": added,
+            "removed_keys": removed,
+        },
+        req,
+    )
     await db.commit()
     
     return {"status": "success", "updated_count": len(new_perms)}
@@ -144,7 +212,9 @@ class RoleUpdateRequest(BaseModel):
 @router.post("", response_model=RoleResponse, status_code=201)
 async def create_role(
     payload: RoleCreateRequest,
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("roles"))
 ):
     # Check if role name already exists
@@ -159,6 +229,13 @@ async def create_role(
         is_system_role=False
     )
     db.add(new_role)
+    await db.flush()  # the id is needed by the audit row
+    _write_audit(
+        db, "ROLE_CREATED", actor_id,
+        f"สร้างบทบาท {new_role.name}",
+        {"role_id": str(new_role.id), "name": new_role.name},
+        req,
+    )
     await db.commit()
     await db.refresh(new_role)
     return new_role
@@ -167,7 +244,9 @@ async def create_role(
 async def update_role(
     role_id: uuid.UUID,
     payload: RoleUpdateRequest,
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("roles"))
 ):
     stmt = select(LocalRole).where(LocalRole.id == role_id)
@@ -178,26 +257,41 @@ async def update_role(
     # Protect system roles from name changes
     if role.is_system_role and payload.name and payload.name != role.name:
         raise HTTPException(status_code=400, detail="เปลี่ยนชื่อบทบาทของระบบไม่ได้")
-    
-    if payload.name:
+
+    changed: list[str] = []
+    if payload.name and payload.name != role.name:
         # Check if new name exists elsewhere
         name_stmt = select(LocalRole).where(LocalRole.name == payload.name, LocalRole.id != role_id)
         existing = (await db.execute(name_stmt)).scalar_one_or_none()
         if existing:
             raise HTTPException(status_code=400, detail="ชื่อบทบาทนี้มีอยู่แล้ว")
         role.name = payload.name
+        changed.append("name")
         
-    if payload.description is not None:
+    if payload.description is not None and payload.description != role.description:
         role.description = payload.description
-        
-    await db.commit()
-    await db.refresh(role)
+        changed.append("description")
+
+    if changed:
+        # A PATCH that changes nothing writes no row and no UPDATE (the route has no UI yet — task
+        # 047 — but it is reachable from the API, so it leaves the same kind of trace as the rest).
+        labels = ", ".join(ROLE_FIELD_LABELS[field] for field in changed)
+        _write_audit(
+            db, "ROLE_UPDATED", actor_id,
+            f"แก้ไขบทบาท {role.name}: {labels}",
+            {"role_id": str(role_id), "role_name": role.name, "fields": changed},
+            req,
+        )
+        await db.commit()
+        await db.refresh(role)
     return role
 
 @router.delete("/{role_id}")
 async def delete_role(
     role_id: uuid.UUID,
+    req: Request,
     db: AsyncSession = Depends(get_db),
+    actor_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("roles"))
 ):
     stmt = select(LocalRole).where(LocalRole.id == role_id)
@@ -226,7 +320,14 @@ async def delete_role(
     await db.execute(delete(RoleMenuPermission).where(RoleMenuPermission.role_id == role_id))
     
     # Delete the role
+    role_name = role.name
     await db.delete(role)
+    _write_audit(
+        db, "ROLE_DELETED", actor_id,
+        f"ลบบทบาท {role_name}",
+        {"role_id": str(role_id), "role_name": role_name},
+        req,
+    )
     await db.commit()
-    return {"status": "success", "message": f"Role '{role.name}' deleted"}
+    return {"status": "success", "message": f"Role '{role_name}' deleted"}
 

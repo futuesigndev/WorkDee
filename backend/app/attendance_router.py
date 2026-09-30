@@ -434,7 +434,7 @@ async def create_location(
         db,
         "ATTENDANCE_LOCATION_CREATED",
         actor_id,
-        f"Created attendance location {payload.code}",
+        f"เพิ่มสถานที่ลงเวลา {payload.code}",
         payload.model_dump().keys(),
     )
     try:
@@ -481,7 +481,7 @@ async def update_location(
         db,
         "ATTENDANCE_LOCATION_UPDATED",
         actor_id,
-        f"Updated attendance location {row.code}",
+        f"แก้ไขสถานที่ลงเวลา {row.code}",
         changes.keys(),
     )
     try:
@@ -542,7 +542,7 @@ async def create_template(
     row.rounds = [AttendanceTemplateRound(**item) for item in rounds]
     db.add(row)
     fields = [k for k in payload.model_dump().keys() if k != "rounds"] + ["rounds"]
-    _write_audit(db, "ATTENDANCE_TEMPLATE_CREATED", actor_id, f"Created attendance template '{payload.name}'", fields)
+    _write_audit(db, "ATTENDANCE_TEMPLATE_CREATED", actor_id, f"เพิ่มแม่แบบการลงเวลา {payload.name}", fields)
     try:
         await db.commit()
     except IntegrityError:
@@ -593,7 +593,7 @@ async def update_template(
         db,
         "ATTENDANCE_TEMPLATE_UPDATED",
         actor_id,
-        f"Updated attendance template '{row.name}'",
+        f"แก้ไขแม่แบบการลงเวลา {row.name}",
         changes.keys(),
     )
     try:

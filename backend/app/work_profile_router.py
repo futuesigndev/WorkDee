@@ -442,7 +442,7 @@ async def set_profile(
             db,
             "ATTENDANCE_PROFILE_UPDATED",
             actor_id,
-            f"Updated work profile for employee {employee_id}",
+            f"แก้ไขโปรไฟล์การลงเวลาของพนักงาน {employee_id}",
             {"fields": sorted(plan["changed"]), "employee_id": employee_id},
         )
         try:
@@ -581,7 +581,7 @@ async def bulk_set_profiles(
             db,
             "ATTENDANCE_PROFILE_BULK_UPDATED",
             actor_id,
-            f"Bulk updated {len(changed_ids)} work profile(s)",
+            f"แก้ไขโปรไฟล์การลงเวลาหลายรายการ: {len(changed_ids)} รายการ",
             {
                 "fields": sorted(changes.keys()),
                 "template_id": str(changes["template_id"]) if changes.get("template_id") else None,

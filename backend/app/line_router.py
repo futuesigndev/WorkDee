@@ -640,25 +640,43 @@ async def approve_binding(
 @router.post("/line/reject/{binding_id}")
 async def reject_binding(
     binding_id: uuid.UUID,
+    req: Request,
     db: AsyncSession = Depends(get_db),
     admin_id: str = Depends(get_current_user_id),
     _current_user = Depends(require_permission("line"))
 ):
-    """Rejects a pending LINE binding."""
-    stmt = update(LineBinding).where(
+    """Rejects a pending LINE binding.
+
+    Task 046/D17: a rejection now leaves the same kind of trace the revoke path leaves —
+    `EVENT_LINE_BINDING_REJECTED`, carrying the employee id, the LINE user id and the acting admin.
+    A rejection has no reason, so the row has no `reason` field, and nothing is pushed to LINE (the
+    employee is never told). Anything that is not PENDING keeps answering the same 404 and still
+    writes nothing.
+    """
+    stmt = select(LineBinding).where(
         and_(
             LineBinding.id == binding_id,
             LineBinding.status == "PENDING"
         )
-    ).values(
-        status="REJECTED",
-        approved_by=admin_id,
-        approved_at=datetime.utcnow()
     )
-    res = await db.execute(stmt)
-    if res.rowcount == 0:
+    binding = (await db.execute(stmt)).scalar_one_or_none()
+    if binding is None:
         raise HTTPException(status_code=404, detail="ไม่พบคำขอผูกบัญชีที่รออนุมัติ")
-        
+
+    binding.status = "REJECTED"
+    binding.approved_by = admin_id
+    binding.approved_at = datetime.utcnow()
+
+    db.add(AuditLog(
+        action="EVENT_LINE_BINDING_REJECTED",
+        actor_id=admin_id,
+        details=f"ไม่อนุมัติคำขอผูกบัญชี LINE ของพนักงานรหัส {binding.employee_id}",
+        ip_address=req.client.host if req.client else "127.0.0.1",
+        metadata_json={
+            "line_user_id": binding.line_user_id,
+            "employee_id": binding.employee_id,
+        }
+    ))
     await db.commit()
     return {"message": "Rejected"}
 
