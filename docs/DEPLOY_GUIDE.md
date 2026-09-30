@@ -49,10 +49,11 @@
 
 **Internal Communication (Docker):**
 - Frontend → Backend ผ่าน `/api/*` rewrite ของ Next server (ไม่ได้เรียกจากเบราว์เซอร์) — **ปลายทางคือค่า
-  `NEXT_PUBLIC_API_URL` ที่ฝังตอน build** ไม่ใช่ชื่อ service ใน compose: ตั้งใน `frontend/.env.local`
-  หรือ build arg `NEXT_PUBLIC_API_URL` ของ compose (ดู §3.2, §6.1) ค่า default ใน
-  `docker-compose.yml` (`http://localhost:8019`) เหมาะกับ dev บนเครื่องเดียวเท่านั้น — ใน container
-  ต้องเป็น URL ที่ container ของ frontend เรียกถึงได้จริง ไม่งั้นหน้าเว็บจะได้ 500 จาก rewrite
+  `NEXT_PUBLIC_API_URL` ที่ฝังตอน build** และโค้ดส่วนนี้รันอยู่ *ใน container ของ frontend* ค่าที่ถูกต้องจึงเป็น
+  ชื่อ service ของ compose + port ที่ backend ฟังอยู่ภายใน container: งาน 041 เปลี่ยนค่า default ใน
+  `docker-compose.yml` เป็น **`http://backend:8000`** (เดิม `http://localhost:8019` ซึ่งใช้ได้เฉพาะตอนรัน
+  ทั้งสองโปรเซสบนเครื่องเดียวกัน — ใน container มันจะชี้กลับมาที่ frontend เอง หน้าเว็บเลยได้ 500 จาก rewrite)
+  ถ้า backend อยู่คนละ host ใน production ให้ override ด้วย `NEXT_PUBLIC_API_URL=https://api.…` (ดู §3.2, §7.3)
 - Backend → PostgreSQL ผ่าน `db:5432` (docker network)
 - Backend → Redis ผ่าน `redis:6379` (docker network)
 
@@ -92,7 +93,7 @@ cp backend/.env.example backend/.env
 | `COOKIE_SECURE` | ✅ | `False` = dev (HTTP), `True` = prod (HTTPS) |
 | `COOKIE_SAMESITE` | ✅ | `lax` = dev, `none` = cross-site prod |
 | `REFRESH_TOKEN_EXPIRE_SECONDS` | ⬜ | อายุ cookie ของ refresh token — default `604800` (7 วัน) |
-| `ACCESS_TOKEN_EXPIRE_SECONDS` | ⬜ | default `900` — **โค้ดส่วนไหนก็ไม่อ่านค่านี้แล้ว** (ดู §13): WorkDee ไม่ได้เป็นคนกำหนดอายุ access token (Core-API เป็นคนออกและกำหนด) ค่านี้จึงเป็นเพียงตัวเลขอ้างอิงที่ตกค้างอยู่ |
+| `ACCESS_TOKEN_EXPIRE_SECONDS` | ⬜ | default `900` — **ไม่มีโค้ดของแอปอ่านค่านี้แล้ว** (ตรวจซ้ำในงาน 041): WorkDee ไม่ได้เป็นคนกำหนดอายุ access token (Core-API เป็นคนออกและกำหนด) ตัวเลขนี้จึงเป็นค่าอ้างอิงที่ตกค้าง — ที่ยังลบไม่ได้เพราะชุดทดสอบใน `.scratch/` ใช้เป็นอายุของ token ปลอม (ดู §13) |
 | `SESSION_MAX_RENEWALS` | ⬜ | จำนวนครั้งสูงสุดที่ session หนึ่งต่ออายุอัตโนมัติได้ — default `3` (ดู §13) |
 | `SESSION_MAX_AGE_MINUTES` | ⬜ | เวลารวมสูงสุดของการ login 1 ครั้ง (นาที) — default `60` (ดู §13) |
 | `APP_ENV` | ⬜ | ชื่อ environment — `development` (default) หรือ `production` เมื่อ deploy (ปัจจุบันเป็นข้อมูลประกอบเท่านั้น ไม่มีโค้ดส่วนไหนอ้างอิง) |
@@ -132,7 +133,7 @@ cp frontend/.env.local.example frontend/.env.local
 
 | Variable | จำเป็น | คำอธิบาย |
 |----------|--------|---------|
-| `NEXT_PUBLIC_API_URL` | ✅ | URL ของ Backend (มองเห็นได้จาก browser) — ค่า default ในโค้ดคือ `http://localhost:8019` และเป็นปลายทางของ `/api/*` rewrite ด้วย |
+| `NEXT_PUBLIC_API_URL` | ✅ | URL ที่ **container ของ frontend** ใช้ต่อกับ backend (ไม่ใช่ค่าที่เบราว์เซอร์เรียก — หน้าเว็บเรียก origin ตัวเองแล้วให้ Next proxy) — เป็นปลายทางของ `/api/*` rewrite และของ fetch ฝั่ง server: ค่า fallback ในโค้ดคือ `http://localhost:8019` (dev บนเครื่องเดียว) ส่วน build arg ของ compose มีค่า default เป็น `http://backend:8000` (ชื่อ service + port ใน container) |
 | `NEXT_PUBLIC_APP_NAME` | ⬜ | ชื่อ App ที่แสดงบน browser tab (ค่าเริ่มต้นก่อนที่ชื่อจาก `app_settings.app_name` จะโหลดเสร็จ) |
 | `NEXT_PUBLIC_LIFF_API_URL` | ⬜ | URL สาธารณะของ frontend สำหรับทดสอบ LIFF/Webhook ผ่าน tunnel เฉพาะ dev (ใช้สร้าง `allowedDevOrigins` ของ `next dev` — ไม่มีผลกับ production build) |
 | `NEXT_PUBLIC_LIFF_ID` | ⬜ | LIFF ID สำรองของหน้า “QR Code” ใน dashboard/line (ค่าจริงอ่านจาก Admin UI → Settings) ใช้เฉพาะเมื่อยังไม่ได้ตั้งค่าใน DB |
@@ -253,7 +254,8 @@ cp backend/.env.example backend/.env
 
 # 3. Frontend (ถ้าต้องการ override)
 cp frontend/.env.local.example frontend/.env.local
-# แก้ไข NEXT_PUBLIC_API_URL ให้ชี้ไป public URL ของ backend
+# แก้ไข NEXT_PUBLIC_API_URL ให้เป็น URL ที่ container ของ frontend ต่อถึง backend ได้
+# (ใน compose ปกติปล่อยเป็น default http://backend:8000 ไม่ต้องตั้ง — ตั้งเฉพาะเมื่อ backend อยู่คนละ host)
 ```
 
 ### 6.2 Build และ Start ทั้งระบบ
@@ -352,7 +354,7 @@ backend:
 frontend:
   build:
     args:
-      NEXT_PUBLIC_API_URL: http://localhost:8080  # URL ที่ browser เห็น
+      NEXT_PUBLIC_API_URL: http://backend:8080  # ชื่อ service + port ที่ container ฟัง
 ```
 
 ### 7.3 ใช้ `.env` ควบคุม Port (Production Best Practice)
@@ -382,7 +384,7 @@ services:
       - "${FRONTEND_PORT:-3019}:3000"
     build:
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8019}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
 ```
 
 จากนั้น build:
@@ -413,7 +415,8 @@ docker compose --env-file .env up -d --build
 - [ ] Redis เชื่อมต่อได้
 
 ### ✅ Frontend
-- [ ] `NEXT_PUBLIC_API_URL` ชี้ไปที่ production backend URL
+- [ ] `NEXT_PUBLIC_API_URL` ชี้ไปที่ backend ที่ container ของ frontend ต่อถึง (ค่า default ของ compose คือ
+      `http://backend:8000`; ถ้า backend อยู่คนละ host ให้ override เป็น URL จริง)
 - [ ] Build สำเร็จ (`npm run build` ไม่มี error)
 - [ ] `output: "standalone"` อยู่ใน `next.config.ts` แล้ว
 
@@ -759,8 +762,9 @@ Role `Admin` ได้สิทธิ์อัตโนมัติจาก see
 > เบราว์เซอร์ทิ้ง cookie ก่อนที่ `/auth/refresh` จะได้ใช้ และ session ที่ idle ต้อง login ใหม่เสมอ ตอนนี้ cookie
 > อยู่ได้ตลอดเพดาน session (60 นาที) แต่ตัว token ข้างในยังหมดอายุตาม Core-API และทุกเส้นทางที่ต้องยืนยันตัวตน
 > ยังปฏิเสธ token ที่หมดอายุ (พิสูจน์ใน `028-report.md`) ข้อจำกัดที่เหลือ: (1) `ACCESS_TOKEN_EXPIRE_SECONDS`
-> ในระบบนี้ (900 วินาที) เป็น "ข้อสมมติ" ของ WorkDee ไม่ใช่ค่าจริงของ Core-API ซึ่งวัดได้ 1800 วินาที — ถ้าจะแก้
-> ให้ตรง ให้แก้ที่ `.env` ของ backend อย่างเดียว (เพดาน 60 นาทีไม่ผูกกับค่านี้แล้ว) (2) session ใหม่ใช้ระบบนี้
+> ในระบบนี้ (900 วินาที) เป็น "ข้อสมมติ" ของ WorkDee ไม่ใช่ค่าจริงของ Core-API ซึ่งวัดได้ 1800 วินาที —
+> ไม่มีโค้ดของแอปอ่านค่านี้และเพดาน 60 นาทีก็ไม่ผูกกับมัน จึงไม่มีอะไรต้องไปแก้ใน `.env`; งาน 041 เก็บค่าไว้
+> เพราะชุดทดสอบใน `.scratch/` ใช้เป็นอายุ token ปลอมเท่านั้น (2) session ใหม่ใช้ระบบนี้
 > ตั้งแต่วันที่ deploy — session ที่ login ก่อนหน้านั้นไม่มีตัวนับ จึงต้อง login ใหม่หนึ่งครั้ง
 
 ---
@@ -837,7 +841,7 @@ logout / ลบผู้ใช้ / ปิดใช้งาน / ครบโ�
 | ค่า | สถานะ |
 |---|---|
 | `APP_ENV` | ไม่มีโค้ดส่วนไหนอ่าน (มีไว้บอกชื่อ environment เฉย ๆ) — ตัดสินใจว่าจะเก็บหรือเอาออกยังค้างอยู่ |
-| `ACCESS_TOKEN_EXPIRE_SECONDS` | ไม่มีโค้ดส่วนไหนอ่านเช่นกัน — อายุ access token เป็นของ Core-API (วัดได้ 1800 วินาที) ส่วน cookie ของ WorkDee อายุเท่า `SESSION_MAX_AGE_MINUTES` (§13) |
+| `ACCESS_TOKEN_EXPIRE_SECONDS` | ไม่มีโค้ดของแอปอ่านเช่นกัน — อายุ access token เป็นของ Core-API (วัดได้ 1800 วินาที) ส่วน cookie ของ WorkDee อายุเท่า `SESSION_MAX_AGE_MINUTES` (§13) ที่ยังลบไม่ได้เพราะชุดทดสอบใน `.scratch/` ใช้เป็นอายุ token ปลอม |
 
 ---
 

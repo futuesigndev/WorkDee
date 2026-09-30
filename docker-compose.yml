@@ -59,8 +59,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Backend URL that is accessible from the *browser* (external)
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8019}
+        # Where the **frontend container** reaches the backend, for the Next server's `/api/*` rewrite
+        # and for server-side fetches: the compose service name plus the port the backend listens on
+        # *inside* its container (8000 — not the published ${BACKEND_PORT:-8019}). The value is baked
+        # into the bundle at build time and the browser never dials it (pages call their own origin and
+        # are proxied). A deployment where the API sits elsewhere overrides it, e.g.
+        # NEXT_PUBLIC_API_URL=https://api.example.com (task 041; was http://localhost:8019, which only
+        # works when both processes share the host's network).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3019}:3000"
