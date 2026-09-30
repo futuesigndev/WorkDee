@@ -46,7 +46,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-corptemp_user}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-corptemp_db}"
       REDIS_URL: redis://redis:6379/0
     ports:
-      - "${BACKEND_PORT:-8012}:8000"
+      - "${BACKEND_PORT:-8019}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -60,10 +60,10 @@ services:
       dockerfile: Dockerfile
       args:
         # Backend URL that is accessible from the *browser* (external)
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8012}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8019}
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3012}:3000"
+      - "${FRONTEND_PORT:-3019}:3000"
     depends_on:
       - backend
 

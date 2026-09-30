@@ -8,40 +8,22 @@ if (liffApiUrl) {
     if (!allowedOrigins.includes(parsed)) {
       allowedOrigins.push(parsed);
     }
-  } catch (e) {
+  } catch {
     // Ignore invalid URLs
   }
 }
 
 
-// The ngrok browser-warning bypass header exists only to make local ngrok tunnels usable.
-// `next dev` runs with NODE_ENV=development; production builds run as "production".
-const isDevelopment = process.env.NODE_ENV !== "production";
-
 const nextConfig: NextConfig = {
   output: "standalone",
+  // `allowedDevOrigins` must contain the host the phone/LINE actually opens (derived from
+  // NEXT_PUBLIC_LIFF_API_URL above), otherwise `next dev` blocks its own /_next/* assets.
   allowedDevOrigins: allowedOrigins,
-  async headers() {
-    if (!isDevelopment) {
-      return [];
-    }
-    return [
-      {
-        source: "/:path*",
-        headers: [
-          {
-            key: "ngrok-skip-browser-warning",
-            value: "true",
-          },
-        ],
-      },
-    ];
-  },
   async rewrites() {
     return [
       {
         source: "/api/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8012"}/api/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8019"}/api/:path*`,
       },
     ];
   },

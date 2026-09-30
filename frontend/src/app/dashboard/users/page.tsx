@@ -6,10 +6,6 @@ import {
   UserPlus, 
   Search, 
   RefreshCw, 
-  Shield, 
-  UserCheck, 
-  UserX,
-  MoreVertical,
   Loader2,
   Trash2,
   X,
@@ -22,22 +18,26 @@ import { isPermissionDenied, permissionErrorMessage } from "@/lib/errors"
 import AccessDenied from "@/components/AccessDenied"
 
 export default function UsersPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- user rows are the API's shape and have no frontend type yet; typing them is a design task (032)
   const [users, setUsers] = useState<any[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- role rows are the API's shape, not modelled in the frontend yet (032)
   const [roles, setRoles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [accessDenied, setAccessDenied] = useState(false)
   const [search, setSearch] = useState("")
   const [isProvisioning, setIsProvisioning] = useState(false)
-  const [provisionId, setProvisionId] = useState("")
 
   // Modals & Advanced Search/Delete states
   const [showProvisionModal, setShowProvisionModal] = useState(false)
   const [searchEmpQuery, setSearchEmpQuery] = useState("")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Core-API employee search rows have no frontend type yet (032)
   const [empResults, setEmpResults] = useState<any[]>([])
   const [searchingEmp, setSearchingEmp] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- selected Core-API employee record; shape not modelled in the frontend yet (032)
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null)
   const [selectedRoleName, setSelectedRoleName] = useState("User")
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- user row pending deletion; shape not modelled in the frontend yet (032)
   const [userToDelete, setUserToDelete] = useState<any | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -70,6 +70,7 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading the user and role lists into state on mount is the purpose of this effect (032)
     fetchUsers()
     fetchRoles()
   }, [])
@@ -77,6 +78,7 @@ export default function UsersPage() {
   // Debounce search employee from Core-API
   useEffect(() => {
     if (!searchEmpQuery.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the stale result list before the debounce fires is deliberate (032)
       setEmpResults([])
       return
     }
@@ -114,10 +116,10 @@ export default function UsersPage() {
         fetchUsers()
       } else {
         const error = await res.json()
-        alert(error.detail || "Provisioning failed")
+        alert(error.detail || "เพิ่มผู้ใช้งานไม่สำเร็จ")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Network error"))
+      alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
     } finally {
       setIsProvisioning(false)
     }
@@ -135,10 +137,10 @@ export default function UsersPage() {
         fetchUsers()
       } else {
         const error = await res.json()
-        alert(error.detail || "Deletion failed")
+        alert(error.detail || "ลบไม่สำเร็จ")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Network error"))
+      alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
     } finally {
       setDeletingId(null)
     }
@@ -156,10 +158,10 @@ export default function UsersPage() {
         fetchUsers()
       } else {
         const error = await res.json()
-        alert(error.detail || "Failed to update user status")
+        alert(error.detail || "แก้ไขสถานะไม่สำเร็จ")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Network error: Failed to update user status"))
+      alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
     }
   }
 
@@ -174,10 +176,10 @@ export default function UsersPage() {
         fetchUsers()
       } else {
         const error = await res.json()
-        alert(error.detail || "Failed to update user role")
+        alert(error.detail || "แก้ไขบทบาทไม่สำเร็จ")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Network error: Failed to update user role"))
+      alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
     }
   }
 
@@ -200,7 +202,7 @@ export default function UsersPage() {
   }
 
   const processedUsers = React.useMemo(() => {
-    let result = users.filter(u => 
+    const result = users.filter(u => 
       u.full_name.toLowerCase().includes(search.toLowerCase()) || 
       u.employee_id.includes(search) ||
       u.department.toLowerCase().includes(search.toLowerCase()) ||
@@ -244,9 +246,9 @@ export default function UsersPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <Users className="text-primary" /> User Management
+            <Users className="text-primary" /> ผู้ใช้งาน
           </h1>
-          <p className="text-base-content/50 text-sm">Provision and manage local system users</p>
+          <p className="text-base-content/50 text-sm font-bold">เพิ่มและดูแลผู้ใช้งานในระบบ</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -260,7 +262,7 @@ export default function UsersPage() {
             className="bg-primary text-primary-content flex items-center gap-2 h-10 px-6 font-bold shadow-lg shadow-primary/20 rounded-xl cursor-pointer hover:scale-102 active:scale-98 transition-all"
           >
             <UserPlus size={16} />
-            Provision User
+            เพิ่มผู้ใช้งาน
           </button>
         </div>
       </div>
@@ -270,7 +272,7 @@ export default function UsersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" size={18} />
           <input 
             type="text" 
-            placeholder="Search by name or ID..." 
+            placeholder="ค้นหาชื่อ รหัสพนักงาน แผนก หรือฝ่าย" 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-base-200/50 border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary/20 outline-none"
@@ -286,19 +288,19 @@ export default function UsersPage() {
           <table className="w-full text-left">
             <thead className="bg-base-200/50 border-b border-base-300">
               <tr>
-                <th onClick={() => handleSort('full_name')} className="px-6 py-4 text-xs font-black uppercase tracking-wider text-base-content/50 cursor-pointer select-none hover:text-base-content transition-colors">
-                  Employee {renderSortIcon('full_name')}
+                <th onClick={() => handleSort('full_name')} className="px-6 py-4 text-xs font-black text-base-content/50 cursor-pointer select-none hover:text-base-content transition-colors">
+                  พนักงาน {renderSortIcon('full_name')}
                 </th>
-                <th onClick={() => handleSort('department')} className="px-6 py-4 text-xs font-black uppercase tracking-wider text-base-content/50 cursor-pointer select-none hover:text-base-content transition-colors">
-                  Details {renderSortIcon('department')}
+                <th onClick={() => handleSort('department')} className="px-6 py-4 text-xs font-black text-base-content/50 cursor-pointer select-none hover:text-base-content transition-colors">
+                  แผนก / ฝ่าย {renderSortIcon('department')}
                 </th>
-                <th onClick={() => handleSort('role')} className="px-6 py-4 text-xs font-black uppercase tracking-wider text-base-content/50 cursor-pointer select-none hover:text-base-content transition-colors">
-                  System Role {renderSortIcon('role')}
+                <th onClick={() => handleSort('role')} className="px-6 py-4 text-xs font-black text-base-content/50 cursor-pointer select-none hover:text-base-content transition-colors">
+                  บทบาทในระบบ {renderSortIcon('role')}
                 </th>
-                <th onClick={() => handleSort('is_active')} className="px-6 py-4 text-xs font-black uppercase tracking-wider text-base-content/50 text-center cursor-pointer select-none hover:text-base-content transition-colors">
-                  Status {renderSortIcon('is_active')}
+                <th onClick={() => handleSort('is_active')} className="px-6 py-4 text-xs font-black text-base-content/50 text-center cursor-pointer select-none hover:text-base-content transition-colors">
+                  สถานะ {renderSortIcon('is_active')}
                 </th>
-                <th className="px-6 py-4 text-xs font-black uppercase tracking-wider text-base-content/50 text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-black text-base-content/50 text-right">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base-300">
@@ -310,7 +312,7 @@ export default function UsersPage() {
                 ))
               ) : paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-base-content/30 italic">No users found</td>
+                  <td colSpan={5} className="px-6 py-12 text-center text-base-content/30 italic">ไม่พบผู้ใช้งาน</td>
                 </tr>
               ) : (
                 paginatedUsers.map((u) => (
@@ -343,20 +345,20 @@ export default function UsersPage() {
                       <button 
                         onClick={() => toggleUserStatus(u.employee_id, u.is_active)}
                         className={cn(
-                          "px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase transition-all cursor-pointer",
+                          "px-3 py-1 rounded-full text-[10px] font-black transition-all cursor-pointer",
                           u.is_active 
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20" 
                             : "bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20"
                         )}
                       >
-                        {u.is_active ? "Active" : "Disabled"}
+                        {u.is_active ? "ใช้งาน" : "ปิดใช้งาน"}
                       </button>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button 
                         onClick={() => setUserToDelete(u)}
                         className="p-2 hover:bg-red-500/10 text-base-content/30 hover:text-red-600 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center"
-                        title="Delete User"
+                        title="ลบผู้ใช้งาน"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -372,11 +374,11 @@ export default function UsersPage() {
         {processedUsers.length > 0 && (
           <div className="bg-base-100 p-4 border-t border-base-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
             <div className="text-base-content/50">
-              Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedUsers.length)} to {Math.min(currentPage * itemsPerPage, processedUsers.length)} of {processedUsers.length} entries
+              แสดง {Math.min((currentPage - 1) * itemsPerPage + 1, processedUsers.length)}–{Math.min(currentPage * itemsPerPage, processedUsers.length)} จาก {processedUsers.length} รายการ
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
-                <span className="text-base-content/40">Show</span>
+                <span className="text-base-content/40">จำนวนต่อหน้า</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => {
@@ -396,7 +398,7 @@ export default function UsersPage() {
                   disabled={currentPage === 1}
                   className="px-3 py-1.5 bg-base-200 hover:bg-base-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-bold transition-colors cursor-pointer"
                 >
-                  Previous
+                  ก่อนหน้า
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                   <button
@@ -417,7 +419,7 @@ export default function UsersPage() {
                   disabled={currentPage === totalPages || totalPages === 0}
                   className="px-3 py-1.5 bg-base-200 hover:bg-base-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-bold transition-colors cursor-pointer"
                 >
-                  Next
+                  ถัดไป
                 </button>
               </div>
             </div>
@@ -433,9 +435,9 @@ export default function UsersPage() {
             <div className="p-6 border-b border-base-300 flex justify-between items-center bg-base-200/50">
               <div>
                 <h2 className="text-lg font-black tracking-tight text-base-content flex items-center gap-2">
-                  <UserPlus className="text-primary" size={20} /> Provision User
+                  <UserPlus className="text-primary" size={20} /> เพิ่มผู้ใช้งาน
                 </h2>
-                <p className="text-xs text-base-content/50 mt-0.5">Search employee in Core-API and grant access.</p>
+                <p className="text-xs text-base-content/50 mt-0.5">ค้นหาพนักงานจาก Core-API แล้วให้สิทธิ์เข้าใช้งาน</p>
               </div>
               <button 
                 onClick={() => setShowProvisionModal(false)}
@@ -453,7 +455,7 @@ export default function UsersPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" size={18} />
                     <input 
                       type="text" 
-                      placeholder="Search employee by name, nickname or ID..." 
+                      placeholder="ค้นหาพนักงานด้วยชื่อ ชื่อเล่น หรือรหัสพนักงาน" 
                       value={searchEmpQuery}
                       onChange={(e) => setSearchEmpQuery(e.target.value)}
                       className="w-full bg-base-200 border-none rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none"
@@ -480,17 +482,17 @@ export default function UsersPage() {
                             <div className="text-sm font-bold text-base-content group-hover:text-primary transition-colors">{emp.full_name}</div>
                             <div className="text-[10px] text-base-content/40 font-mono mt-0.5">#{emp.employee_id} • {emp.department} • {emp.division}</div>
                           </div>
-                          <span className="text-[10px] bg-base-200 text-base-content/60 px-2 py-0.5 rounded-lg group-hover:bg-primary group-hover:text-white transition-all">Select</span>
+                          <span className="text-[10px] bg-base-200 text-base-content/60 px-2 py-0.5 rounded-lg group-hover:bg-primary group-hover:text-white transition-all">เลือก</span>
                         </button>
                       ))}
                     </div>
                   ) : searchEmpQuery && !searchingEmp ? (
                     <div className="text-center py-8 text-base-content/40 italic text-sm">
-                      No matching employees found in Core-API
+                      ไม่พบพนักงานที่ตรงกันใน Core-API
                     </div>
                   ) : !searchEmpQuery ? (
                     <div className="text-center py-8 text-base-content/30 text-xs font-medium">
-                      Start typing to search corporate database...
+                      พิมพ์เพื่อค้นหารายชื่อพนักงาน
                     </div>
                   ) : null}
                 </div>
@@ -514,13 +516,13 @@ export default function UsersPage() {
                       onClick={() => setSelectedEmployee(null)}
                       className="absolute top-4 right-4 text-xs font-black text-primary hover:text-primary-focus underline cursor-pointer"
                     >
-                      Change
+                      เปลี่ยน
                     </button>
                   </div>
 
                   {/* System Role Selection */}
                   <div className="space-y-2">
-                    <label className="text-xs font-black uppercase tracking-wider text-base-content/40">Assign System Role</label>
+                    <label className="text-xs font-black text-base-content/40">กำหนดบทบาทในระบบ</label>
                     <select
                       value={selectedRoleName}
                       onChange={(e) => setSelectedRoleName(e.target.value)}
@@ -543,7 +545,7 @@ export default function UsersPage() {
                 onClick={() => setShowProvisionModal(false)}
                 className="px-4 py-2.5 hover:bg-base-300 rounded-xl text-sm font-bold text-base-content/50 transition-colors cursor-pointer"
               >
-                Cancel
+                ยกเลิก
               </button>
               <button 
                 onClick={handleProvisionSubmit}
@@ -551,7 +553,7 @@ export default function UsersPage() {
                 className="bg-primary text-primary-content rounded-xl px-6 py-2.5 text-sm font-bold shadow-lg shadow-primary/10 flex items-center gap-2 cursor-pointer hover:opacity-90 active:scale-98 transition-all"
               >
                 {isProvisioning && <Loader2 className="w-4 h-4 animate-spin" />}
-                Provision User
+                เพิ่มผู้ใช้งาน
               </button>
             </div>
           </div>
@@ -562,19 +564,19 @@ export default function UsersPage() {
       {userToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
           <div className="bg-base-100 rounded-3xl border border-base-300 w-full max-w-md shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-black text-red-600 dark:text-red-400 mb-2">Delete Local User</h3>
+            <h3 className="text-lg font-black text-red-600 dark:text-red-400 mb-2">ลบผู้ใช้งาน</h3>
             <p className="text-xs text-base-content/60 leading-relaxed mb-6">
-              Are you sure you want to delete <strong>{userToDelete.full_name}</strong> (Employee ID: {userToDelete.employee_id})? 
-              This will permanently remove their local database record and system access.
+              ต้องการลบ <strong>{userToDelete.full_name}</strong> (รหัสพนักงาน: {userToDelete.employee_id}) ใช่หรือไม่? 
+              ระบบจะลบข้อมูลผู้ใช้งานรายนี้ออกจากฐานข้อมูล และตัดสิทธิ์เข้าใช้งานทันที
               <br/><br/>
-              <span className="font-semibold text-base-content/70">Note:</span> This action is local only and will not affect their record on the corporate Core-API.
+              <span className="font-semibold text-base-content/70">หมายเหตุ:</span> ลบเฉพาะในแอปนี้ ไม่กระทบข้อมูลใน Core-API
             </p>
             <div className="flex justify-end gap-3">
               <button 
                 onClick={() => setUserToDelete(null)}
                 className="px-4 py-2 hover:bg-base-200 rounded-xl text-xs font-bold text-base-content/50 transition-colors cursor-pointer"
               >
-                Cancel
+                ยกเลิก
               </button>
               <button 
                 onClick={() => handleDeleteUser(userToDelete.employee_id)}
@@ -582,7 +584,7 @@ export default function UsersPage() {
                 className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl px-5 py-2 text-xs transition-colors flex items-center gap-2 cursor-pointer active:scale-98"
               >
                 {deletingId !== null && <Loader2 className="w-4 h-4 animate-spin" />}
-                Delete User
+                ลบผู้ใช้งาน
               </button>
             </div>
           </div>

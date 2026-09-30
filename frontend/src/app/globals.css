@@ -13,6 +13,22 @@
   --color-base-300: var(--base-300);
   --color-base-content: var(--base-content);
   
+  /* Semantic colours (added in 011, made theme-aware in 012). The error/success/warning/info
+     utilities were used in 7 files but had no token, so those classes generated no CSS at all.
+     They follow the same pattern as --color-primary: the raw value lives in :root and the dark
+     theme ([data-theme="high-contrast-black"]) overrides it, so text stays >= 4.5:1 on both.
+     Light values: error #dc2626, success #15803d, warning #b45309, info #1d4ed8. */
+  --color-error: var(--error);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* -content companions: only the three that are actually used (text-*-content for text sitting on
+     a solid bg-*). text-info-content is not used anywhere, so it is deliberately not defined. */
+  --color-error-content: var(--error-content);
+  --color-success-content: var(--success-content);
+  --color-warning-content: var(--warning-content);
+
   --radius-3xl: 1.5rem;
   --radius-4xl: 2rem;
 }
@@ -25,6 +41,17 @@
   --base-200: #f8fafc;
   --base-300: #f1f5f9;
   --base-content: #0f172a;
+
+  /* Semantic colours — light default, consumed by the @theme mapping above. Contrast as text on
+     base-100: error 4.83:1, success 5.02:1, warning 5.02:1, info 6.70:1; each -content is white on
+     its solid colour (4.83 / 5.02 / 5.02). Overridden by the dark theme below. */
+  --error: #dc2626;
+  --success: #15803d;
+  --warning: #b45309;
+  --info: #1d4ed8;
+  --error-content: #ffffff;
+  --success-content: #ffffff;
+  --warning-content: #ffffff;
 }
 
 
@@ -98,6 +125,18 @@
   --base-200: #111111;
   --base-300: #222222;
   --base-content: #ffffff;
+
+  /* The only dark theme (base-100 luminance 0). Lighter shades of the same hues, because the light
+     values fail on these surfaces; contrast on #000 / #111 / #222: error 7.59 / 6.83 / 5.75,
+     success 12.05 / 10.84 / 9.13, warning 12.58 / 11.31 / 9.53, info 8.26 / 7.43 / 6.26.
+     Black text on the light solid colours: error 7.59, success 12.05, warning 12.58. */
+  --error: #f87171;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --error-content: #000000;
+  --success-content: #000000;
+  --warning-content: #000000;
 }
 
 

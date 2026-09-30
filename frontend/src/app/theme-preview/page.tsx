@@ -7,8 +7,6 @@ import {
   Settings, 
   LogOut, 
   Menu as MenuIcon, 
-  X,
-  Palette,
   ShieldCheck,
   Bell
 } from "lucide-react";
@@ -32,12 +30,14 @@ export default function ThemePreviewPage() {
   const changeTheme = (themeId: string) => {
     setCurrentTheme(themeId);
     document.documentElement.setAttribute("data-theme", themeId);
+    // eslint-disable-next-line react-hooks/immutability -- writing the theme cookie is this preview page's whole purpose (it is read back on the next load); moving the write into an effect would change when it happens (032)
     document.cookie = "theme=" + themeId + "; path=/; max-age=31536000";
   };
 
   useEffect(() => {
     const theme = document.cookie.split("; ").find(row => row.startsWith("theme="))?.split("=")[1];
     if (theme) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs the selected theme from the cookie on first paint; that is the purpose of this effect (032)
       setCurrentTheme(theme);
       document.documentElement.setAttribute("data-theme", theme);
     }
@@ -54,7 +54,7 @@ export default function ThemePreviewPage() {
           <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
             <ShieldCheck className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">FutureSign</span>
+          <span className="font-bold text-lg tracking-tight">WorkDee</span>
         </div>
         
         <nav className="flex-1 p-4 space-y-1">

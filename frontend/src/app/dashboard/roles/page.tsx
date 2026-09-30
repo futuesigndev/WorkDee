@@ -139,11 +139,13 @@ export default function RolesPermissionsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot load on mount into state, which is what this effect is for (032)
     fetchData()
   }, [])
 
   useEffect(() => {
     if (selectedRole) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- loading the selected role's permissions into state is the purpose of this effect (032)
       fetchPermissions(selectedRole.id)
     }
   }, [selectedRole])
@@ -183,10 +185,10 @@ export default function RolesPermissionsPage() {
         body: JSON.stringify({ menu_ids: allowedMenuIds }),
       })
       if (res.ok) {
-        alert("Permissions saved successfully")
+        alert("บันทึกสิทธิ์แล้ว")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Failed to save permissions"))
+      alert(permissionErrorMessage(err, "บันทึกสิทธิ์ไม่สำเร็จ"))
     } finally {
       setSaving(false)
     }
@@ -208,10 +210,10 @@ export default function RolesPermissionsPage() {
         fetchData()
       } else {
         const error = await res.json()
-        alert(error.detail || "Failed to create role")
+        alert(error.detail || "สร้างบทบาทไม่สำเร็จ")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Network error: Failed to create role"))
+      alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
     } finally {
       setCreating(false)
     }
@@ -233,17 +235,17 @@ export default function RolesPermissionsPage() {
         fetchData()
       } else {
         const error = await res.json()
-        alert(error.detail || "Failed to delete role")
+        alert(error.detail || "ลบบทบาทไม่สำเร็จ")
       }
     } catch (err) {
-      alert(permissionErrorMessage(err, "Network error: Failed to delete role"))
+      alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
     } finally {
       setDeletingRole(false)
     }
   }
 
   const processedRoles = React.useMemo(() => {
-    let result = roles.filter(r => 
+    const result = roles.filter(r => 
       r.name.toLowerCase().includes(searchRole.toLowerCase()) ||
       (r.description && r.description.toLowerCase().includes(searchRole.toLowerCase()))
     )
@@ -268,9 +270,9 @@ export default function RolesPermissionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2 text-base-content">
-            <ShieldCheck className="text-primary" /> Roles & Permissions
+            <ShieldCheck className="text-primary" /> บทบาทและสิทธิ์
           </h1>
-          <p className="text-base-content/50 text-sm">Define what each role can see and do</p>
+          <p className="text-base-content/50 text-sm font-bold">กำหนดว่าแต่ละบทบาทเห็นและทำอะไรได้</p>
         </div>
         <button 
           onClick={handleSave}
@@ -278,24 +280,24 @@ export default function RolesPermissionsPage() {
           className="bg-primary text-primary-content flex items-center gap-2 h-10 px-6 font-bold shadow-lg shadow-primary/20 rounded-xl cursor-pointer hover:opacity-90 active:scale-95 transition-all text-xs"
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Save Changes
+          บันทึก
         </button>
       </div>
 
       <div className="flex h-[calc(100vh-200px)] bg-base-100 rounded-2xl border border-base-200 overflow-hidden shadow-sm">
         <div className="w-80 border-r border-base-200 flex flex-col bg-base-200/20">
           <div className="p-4 border-b border-base-200 bg-base-100/50 flex items-center justify-between gap-2">
-            <h2 className="text-xs font-black uppercase tracking-widest text-base-content/40">Roles</h2>
+            <h2 className="text-xs font-black text-base-content/40">บทบาท</h2>
             <button
               onClick={() => {
                 setNewRoleName("")
                 setNewRoleDesc("")
                 setShowCreateModal(true)
               }}
-              className="px-2.5 py-1 bg-primary text-primary-content rounded-lg text-[10px] font-black uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
-              title="Create New Role"
+              className="px-2.5 py-1 bg-primary text-primary-content rounded-lg text-[10px] font-black hover:opacity-90 active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
+              title="เพิ่มบทบาทใหม่"
             >
-              <Plus size={10} /> Add
+              <Plus size={10} /> เพิ่ม
             </button>
           </div>
           
@@ -305,7 +307,7 @@ export default function RolesPermissionsPage() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/30" size={13} />
               <input
                 type="text"
-                placeholder="Search roles..."
+                placeholder="ค้นหาบทบาท..."
                 value={searchRole}
                 onChange={(e) => setSearchRole(e.target.value)}
                 className="w-full bg-base-200 border-none rounded-lg pl-8 pr-2 py-1 text-xs focus:ring-1 focus:ring-primary outline-none"
@@ -314,7 +316,7 @@ export default function RolesPermissionsPage() {
             <button
               onClick={() => setRoleSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
               className="p-1.5 hover:bg-base-200 rounded-lg text-base-content/50 transition-colors cursor-pointer flex items-center justify-center"
-              title={roleSortOrder === 'asc' ? 'Sort Z-A' : 'Sort A-Z'}
+              title={roleSortOrder === 'asc' ? 'เรียงจากมากไปน้อย' : 'เรียงจากน้อยไปมาก'}
             >
               {roleSortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
@@ -340,7 +342,7 @@ export default function RolesPermissionsPage() {
                     "text-[9px] mt-0.5 font-normal",
                     selectedRole?.id === role.id ? "text-primary-content/60" : "text-base-content/40"
                   )}>
-                    {role.is_system_role ? "SYSTEM ROLE" : "CUSTOM ROLE"}
+                    {role.is_system_role ? "บทบาทของระบบ" : "บทบาทที่สร้างเอง"}
                   </div>
                 </button>
                 
@@ -357,7 +359,7 @@ export default function RolesPermissionsPage() {
                           ? "text-primary-content/60 hover:text-white hover:bg-white/10" 
                           : "text-base-content/30 hover:text-red-500"
                       )}
-                      title="Delete Custom Role"
+                      title="ลบบทบาทที่สร้างเอง"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -371,7 +373,7 @@ export default function RolesPermissionsPage() {
             ))}
             
             {processedRoles.length === 0 && (
-              <div className="text-center py-6 text-xs text-base-content/30 italic">No roles found</div>
+              <div className="text-center py-6 text-xs text-base-content/30 italic">ไม่พบบทบาท</div>
             )}
           </div>
         </div>
@@ -386,7 +388,7 @@ export default function RolesPermissionsPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-black uppercase tracking-wider">{selectedRole.display_name || selectedRole.name}</h3>
-                    <p className="text-xs text-base-content/50">{selectedRole.description || "Manage access levels for this role."}</p>
+                    <p className="text-xs text-base-content/50">{selectedRole.description || "กำหนดระดับการเข้าถึงเมนูของบทบาทนี้"}</p>
                   </div>
                 </div>
               </div>
@@ -396,7 +398,7 @@ export default function RolesPermissionsPage() {
                   <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-primary mt-0.5" />
                     <p className="text-xs text-primary/80 leading-relaxed font-medium">
-                      Select menu items that this role is allowed to access.
+                      เลือกเมนูที่บทบาทนี้เข้าใช้งานได้
                     </p>
                   </div>
 
@@ -439,7 +441,7 @@ export default function RolesPermissionsPage() {
                                 {menu.label}
                                 {isParent && childrenCount > 0 && (
                                   <span className="text-[10px] text-base-content/30 ml-2 font-normal">
-                                    ({childrenCount} submenus)
+                                    (เมนูย่อย {childrenCount})
                                   </span>
                                 )}
                               </div>
@@ -472,8 +474,8 @@ export default function RolesPermissionsPage() {
             <div className="flex-1 flex flex-col items-center justify-center text-base-content/30 space-y-4">
               <Lock className="w-16 h-16 opacity-10" />
               <div className="text-center">
-                <p className="text-sm font-black uppercase tracking-widest text-base-content/20">Access Control</p>
-                <p className="text-xs">Select a role to start managing permissions</p>
+                <p className="text-sm font-black text-base-content/20">การเข้าถึงเมนู</p>
+                <p className="text-xs">เลือกบทบาทเพื่อเริ่มกำหนดสิทธิ์</p>
               </div>
             </div>
           )}
@@ -488,9 +490,9 @@ export default function RolesPermissionsPage() {
             <div className="p-5 border-b border-base-300 flex justify-between items-center bg-base-200/50">
               <div>
                 <h2 className="text-base font-black tracking-tight text-base-content flex items-center gap-2">
-                  <ShieldCheck className="text-primary" size={18} /> Create Custom Role
+                  <ShieldCheck className="text-primary" size={18} /> สร้างบทบาทใหม่
                 </h2>
-                <p className="text-[11px] text-base-content/50 mt-0.5">Define a new system role for menu access control.</p>
+                <p className="text-[11px] text-base-content/50 mt-0.5">กำหนดบทบาทใหม่สำหรับควบคุมการเข้าถึงเมนู</p>
               </div>
               <button 
                 onClick={() => setShowCreateModal(false)}
@@ -503,10 +505,10 @@ export default function RolesPermissionsPage() {
             {/* Content */}
             <div className="p-5 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-base-content/40">Role Name</label>
+                <label className="text-[10px] font-black text-base-content/40">ชื่อบทบาท</label>
                 <input 
                   type="text" 
-                  placeholder="e.g. Operator, Coordinator..." 
+                  placeholder="เช่น Operator, Coordinator..." 
                   value={newRoleName}
                   onChange={(e) => setNewRoleName(e.target.value)}
                   className="w-full bg-base-200 border-none rounded-xl px-3.5 py-2 text-xs focus:ring-1 focus:ring-primary outline-none font-bold"
@@ -514,9 +516,9 @@ export default function RolesPermissionsPage() {
               </div>
               
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-wider text-base-content/40">Description</label>
+                <label className="text-[10px] font-black text-base-content/40">รายละเอียด</label>
                 <textarea 
-                  placeholder="Describe the duties or access levels of this role..." 
+                  placeholder="อธิบายหน้าที่หรือการเข้าถึงเมนูของบทบาทนี้" 
                   value={newRoleDesc}
                   onChange={(e) => setNewRoleDesc(e.target.value)}
                   rows={3}
@@ -531,7 +533,7 @@ export default function RolesPermissionsPage() {
                 onClick={() => setShowCreateModal(false)}
                 className="px-3.5 py-2 hover:bg-base-300 rounded-xl text-xs font-bold text-base-content/50 transition-colors cursor-pointer"
               >
-                Cancel
+                ยกเลิก
               </button>
               <button 
                 onClick={handleCreateRole}
@@ -539,7 +541,7 @@ export default function RolesPermissionsPage() {
                 className="bg-primary text-primary-content rounded-xl px-5 py-2 text-xs font-bold shadow-lg shadow-primary/10 flex items-center gap-1.5 cursor-pointer hover:opacity-90 active:scale-98 transition-all disabled:opacity-50"
               >
                 {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Create Role
+                สร้างบทบาท
               </button>
             </div>
           </div>
@@ -550,17 +552,17 @@ export default function RolesPermissionsPage() {
       {roleToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
           <div className="bg-base-100 rounded-3xl border border-base-300 w-full max-w-md shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="text-base font-black text-red-600 dark:text-red-400 mb-2">Delete Custom Role</h3>
+            <h3 className="text-base font-black text-red-600 dark:text-red-400 mb-2">ลบบทบาทที่สร้างเอง</h3>
             <p className="text-xs text-base-content/60 leading-relaxed mb-6">
-              Are you sure you want to delete the role <strong>{roleToDelete.name}</strong>? 
-              This will remove all associated menu permissions. Users currently assigned to this role might lose access.
+              ต้องการลบบทบาท <strong>{roleToDelete.name}</strong> ใช่หรือไม่? 
+              ระบบจะลบสิทธิ์เมนูทั้งหมดของบทบาทนี้ และผู้ใช้งานที่ใช้บทบาทนี้อาจเข้าใช้งานไม่ได้
             </p>
             <div className="flex justify-end gap-2">
               <button 
                 onClick={() => setRoleToDelete(null)}
                 className="px-3.5 py-2 hover:bg-base-200 rounded-xl text-xs font-bold text-base-content/50 transition-colors cursor-pointer"
               >
-                Cancel
+                ยกเลิก
               </button>
               <button 
                 onClick={() => handleDeleteRole(roleToDelete.id)}
@@ -568,7 +570,7 @@ export default function RolesPermissionsPage() {
                 className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl px-5 py-2 text-xs transition-colors flex items-center gap-1.5 cursor-pointer active:scale-98"
               >
                 {deletingRole && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Delete Role
+                ลบบทบาท
               </button>
             </div>
           </div>

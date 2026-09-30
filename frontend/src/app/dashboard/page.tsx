@@ -2,17 +2,16 @@
 
 import React, { useState, useEffect } from 'react'
 import { 
-  LayoutDashboard, 
   Users, 
   ShieldCheck, 
   MessageSquare, 
   History,
   TrendingUp,
-  UserCheck,
   Zap,
   ArrowUpRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { BRAND_FALLBACK } from '@/lib/brand'
 import { API_URL, apiFetch } from '@/lib/api'
 import { isPermissionDenied } from '@/lib/errors'
 import AccessDenied from '@/components/AccessDenied'
@@ -54,10 +53,10 @@ export default function DashboardOverview() {
   }, [])
 
   const cards = [
-    { label: 'Local Users', value: stats.users, icon: Users, color: 'text-primary', bg: 'bg-primary/5', path: '/dashboard/users' },
-    { label: 'System Roles', value: stats.roles, icon: ShieldCheck, color: 'text-info', bg: 'bg-info/5', path: '/dashboard/roles' },
-    { label: 'Pending LINE', value: stats.linePending, icon: MessageSquare, color: 'text-[#06C755]', bg: 'bg-[#06C755]/5', path: '/dashboard/line' },
-    { label: 'Recent Logs', value: stats.recentLogs, icon: History, color: 'text-warning', bg: 'bg-warning/5', path: '/dashboard/logs' },
+    { label: 'ผู้ใช้งาน', value: stats.users, icon: Users, color: 'text-primary', bg: 'bg-primary/5', path: '/dashboard/users' },
+    { label: 'บทบาทในระบบ', value: stats.roles, icon: ShieldCheck, color: 'text-info', bg: 'bg-info/5', path: '/dashboard/roles' },
+    { label: 'รอตรวจ LINE', value: stats.linePending, icon: MessageSquare, color: 'text-[#06C755]', bg: 'bg-[#06C755]/5', path: '/dashboard/line' },
+    { label: 'บันทึกการใช้งานล่าสุด', value: stats.recentLogs, icon: History, color: 'text-warning', bg: 'bg-warning/5', path: '/dashboard/logs' },
   ]
 
   if (accessDenied) return <AccessDenied />
@@ -67,9 +66,9 @@ export default function DashboardOverview() {
       {/* Welcome */}
       <div className="relative overflow-hidden bg-primary/10 p-8 rounded-3xl border border-primary/10">
         <div className="relative z-10">
-          <h1 className="text-3xl font-black tracking-tight text-primary">System Dashboard</h1>
+          <h1 className="text-3xl font-black tracking-tight text-primary">ภาพรวมระบบ</h1>
           <p className="mt-2 text-base-content/60 max-w-lg font-medium">
-            Welcome to FutureSign Admin Console. All settings here are managed via the central Core-API and Local RBAC.
+            ยินดีต้อนรับสู่ระบบผู้ดูแลของ {BRAND_FALLBACK} การตั้งค่าทั้งหมดจัดการผ่าน Core-API และระบบสิทธิ์ภายในแอป
           </p>
         </div>
         <Zap className="absolute right-[-20px] top-[-20px] text-primary/10 w-48 h-48 rotate-12" />
@@ -83,7 +82,7 @@ export default function DashboardOverview() {
               <card.icon size={24} />
             </div>
             <div className="text-3xl font-black tracking-tight mb-1">{loading ? '...' : card.value}</div>
-            <div className="text-xs font-black uppercase text-base-content/40 tracking-widest">{card.label}</div>
+            <div className="text-xs font-black text-base-content/40">{card.label}</div>
             <ArrowUpRight className="absolute top-4 right-4 text-base-content/10 group-hover:text-primary transition-colors" size={20} />
           </div>
         ))}
@@ -93,30 +92,30 @@ export default function DashboardOverview() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-base-100 rounded-3xl border border-base-300 p-8">
           <div className="flex items-center justify-between mb-8">
-             <h3 className="text-xl font-black flex items-center gap-2"><TrendingUp className="text-primary" /> System Utilization</h3>
-             <span className="text-[10px] font-black bg-base-200 px-3 py-1 rounded-full text-base-content/40 uppercase tracking-widest">Real-time</span>
+             <h3 className="text-xl font-black flex items-center gap-2"><TrendingUp className="text-primary" /> การใช้งานระบบ</h3>
+             <span className="text-[10px] font-black bg-base-200 px-3 py-1 rounded-full text-base-content/40">อัปเดตทันที</span>
           </div>
           <div className="h-[250px] w-full bg-base-200/50 rounded-2xl flex items-center justify-center border-2 border-dashed border-base-300">
-             <span className="text-xs text-base-content/20 font-black italic uppercase">Utilization Charts Placeholder</span>
+             <span className="text-xs text-base-content/20 font-black">กราฟการใช้งานจะแสดงที่นี่</span>
           </div>
         </div>
 
         <div className="bg-primary text-primary-content rounded-3xl p-8 flex flex-col justify-between shadow-2xl shadow-primary/30">
           <div>
-            <h3 className="text-xl font-black mb-2">Security Engine</h3>
-            <p className="text-xs opacity-80 font-medium">Session monitoring is active. All interactions are being audited and stored in Redis 7.</p>
+            <h3 className="text-xl font-black mb-2">ระบบความปลอดภัย</h3>
+            <p className="text-xs opacity-80 font-medium">กำลังตรวจสอบเซสชันอยู่ ทุกการใช้งานถูกบันทึกไว้ใน Redis 7</p>
           </div>
           <div className="mt-8 space-y-4">
             <div className="flex items-center justify-between text-sm border-b border-primary-content/10 pb-2">
-               <span className="opacity-70">Active Sessions</span>
-               <span className="font-bold">Normal</span>
+               <span className="opacity-70">เซสชันที่ใช้งานอยู่</span>
+               <span className="font-bold">ปกติ</span>
             </div>
             <div className="flex items-center justify-between text-sm border-b border-primary-content/10 pb-2">
-               <span className="opacity-70">Token Health</span>
+               <span className="opacity-70">สถานะ Token</span>
                <span className="font-bold">100%</span>
             </div>
             <button className="w-full bg-primary-content text-primary py-3 rounded-xl font-black text-sm hover:scale-105 active:scale-95 transition-all mt-4">
-              Security Report
+              รายงานความปลอดภัย
             </button>
           </div>
         </div>

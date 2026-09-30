@@ -69,6 +69,11 @@ next-env.d.ts
 backend/.env
 frontend/.env.local
 
+# --- Local photo storage (task 020) ---
+# The default PHOTO_STORAGE_DIR (backend/storage/checkin_photos) holds employee check-in photos and
+# must never be committed. A NAS path set in .env lives outside the repo and needs nothing here.
+backend/storage/
+
 # --- Temporary / Local Dev Utility Scripts ---
 insert_mock_logs.py
 backend/db_check.py

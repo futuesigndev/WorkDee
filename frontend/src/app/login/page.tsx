@@ -22,9 +22,9 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [siteSettings, setSiteSettings] = useState({
-    appName: "FutureSign Portal",
-    brandingText: "Intelligent Enterprise Bridge.",
-    subText: "Your secure gateway to unified corporate resources.",
+    appName: "WorkDee",
+    brandingText: "ระบบ HR บริการตนเองสำหรับพนักงานและฝ่ายบุคคล",
+    subText: "ลงเวลา ยื่นคำขอ และรับการแจ้งเตือนผ่าน LINE",
   });
 
   useEffect(() => {
@@ -33,9 +33,9 @@ function LoginContent() {
       .then((data) => {
         if (data) {
           setSiteSettings({
-            appName: data.app_name || "FutureSign Portal",
-            brandingText: data.branding_text || "Intelligent Enterprise Bridge.",
-            subText: data.sub_text || "Your secure gateway to unified corporate resources.",
+            appName: data.app_name || "WorkDee",
+            brandingText: data.branding_text || "ระบบ HR บริการตนเองสำหรับพนักงานและฝ่ายบุคคล",
+            subText: data.sub_text || "ลงเวลา ยื่นคำขอ และรับการแจ้งเตือนผ่าน LINE",
           });
           if (data.theme) {
             document.documentElement.setAttribute("data-theme", data.theme);
@@ -64,10 +64,10 @@ function LoginContent() {
         router.push("/dashboard");
       } else {
         const data = await response.json();
-        setError(data.detail || "Invalid employee ID or password");
+        setError(data.detail || "รหัสพนักงานหรือรหัสผ่านไม่ถูกต้อง");
       }
-    } catch (error) {
-      setError("Unable to connect to service. Check network/backend.");
+    } catch {
+      setError("เชื่อมต่อบริการไม่ได้ กรุณาตรวจสอบเครือข่ายหรือเซิร์ฟเวอร์");
     } finally {
       setIsLoading(false);
     }
@@ -95,12 +95,6 @@ function LoginContent() {
             </p>
           </div>
 
-          <div className="relative z-10 flex gap-4">
-            <div className="px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/10 text-[9px] font-black tracking-[3px] uppercase group cursor-default">
-              System Version 1.4
-            </div>
-          </div>
-
           {/* Abstract Decorations */}
           <div className="absolute top-[20%] right-[-10%] w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px]"></div>
           <div className="absolute bottom-[-10%] left-[-10%] w-72 h-72 bg-primary-content/10 rounded-full blur-3xl"></div>
@@ -115,15 +109,15 @@ function LoginContent() {
             </div>
 
             <div className="mb-8">
-              <h3 className="text-2xl font-black text-base-content mb-1.5 tracking-tighter">Sign In</h3>
-              <p className="text-base-content/40 font-bold uppercase text-[10px] tracking-[2px]">Enterprise Authentication</p>
+              <h3 className="text-2xl font-black text-base-content mb-1.5 tracking-tighter">เข้าสู่ระบบ</h3>
+              <p className="text-base-content/40 font-bold text-[10px]">การยืนยันตัวตนสำหรับองค์กร</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-8">
               {isExpired && (
                 <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 p-4 rounded-2xl flex items-center gap-3 text-sm font-bold animate-in fade-in duration-500">
                   <Clock size={18} className="shrink-0" />
-                  <span>Session หมดอายุแล้ว กรุณา Sign In ใหม่อีกครั้ง</span>
+                  <span>เซสชันหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่อีกครั้ง</span>
                 </div>
               )}
               {error && (
@@ -134,7 +128,7 @@ function LoginContent() {
               )}
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-[2px] text-base-content/30 ml-1">Employee ID</label>
+                <label className="text-[10px] font-black text-base-content/30 ml-1">รหัสพนักงาน</label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-base-content/30 group-focus-within:text-primary transition-colors">
                     <User size={18} />
@@ -145,13 +139,13 @@ function LoginContent() {
                     value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value)}
                     className="block w-full pl-14 pr-5 py-3.5 bg-base-100 border-2 border-base-content/5 rounded-xl text-base-content placeholder:text-base-content/20 focus:border-primary focus:ring-4 focus:ring-primary/5 outline-none transition-all font-black text-base shadow-sm"
-                    placeholder="e.g. 110187"
+                    placeholder="เช่น 110187"
                   />
                 </div>
               </div>
 
               <div className="space-y-3">
-                <label className="text-[11px] font-black uppercase tracking-[3px] text-base-content/30 ml-1">Password</label>
+                <label className="text-[11px] font-black text-base-content/30 ml-1">รหัสผ่าน</label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none text-base-content/30 group-focus-within:text-primary transition-colors">
                     <Lock size={20} />
@@ -162,7 +156,7 @@ function LoginContent() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="block w-full pl-16 pr-6 py-5 bg-base-100 border-2 border-base-content/5 rounded-3xl text-base-content placeholder:text-base-content/20 focus:border-primary focus:ring-8 focus:ring-primary/5 outline-none transition-all font-black text-lg shadow-sm"
-                    placeholder="Enter your password"
+                    placeholder="กรอกรหัสผ่าน"
                   />
                 </div>
               </div>
@@ -177,7 +171,7 @@ function LoginContent() {
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
                     <>
-                      Enter Dashboard
+                      เข้าสู่ระบบ
                       <ArrowRight size={18} strokeWidth={3} />
                     </>
                   )}
@@ -185,8 +179,8 @@ function LoginContent() {
               </div>
 
               <div className="text-center">
-                <p className="text-xs font-bold text-base-content/30 uppercase tracking-widest">
-                  Secure Access ? FutureSign Platform
+                <p className="text-xs font-bold text-base-content/30">
+                  ระบบบริหารงานบุคคล
                 </p>
               </div>
             </form>

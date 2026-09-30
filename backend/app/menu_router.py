@@ -64,7 +64,7 @@ async def create_menu(
         select(LocalMenu).where(LocalMenu.key == payload.key)
     )).scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=400, detail=f"Menu key '{payload.key}' already exists")
+        raise HTTPException(status_code=400, detail=f"คีย์เมนู '{payload.key}' ถูกใช้งานแล้ว")
 
     # Validate parent exists if provided
     if payload.parent_id:
@@ -72,7 +72,7 @@ async def create_menu(
             select(LocalMenu).where(LocalMenu.id == payload.parent_id)
         )).scalar_one_or_none()
         if not parent:
-            raise HTTPException(status_code=404, detail="Parent menu not found")
+            raise HTTPException(status_code=404, detail="ไม่พบเมนูแม่ที่เลือก")
 
     new_menu = LocalMenu(
         key=payload.key,
@@ -115,7 +115,7 @@ async def update_menu(
         select(LocalMenu).where(LocalMenu.id == menu_id)
     )).scalar_one_or_none()
     if not menu:
-        raise HTTPException(status_code=404, detail="Menu not found")
+        raise HTTPException(status_code=404, detail="ไม่พบเมนูนี้")
 
     if payload.label is not None:
         menu.label = payload.label
@@ -144,7 +144,7 @@ async def delete_menu(
         select(LocalMenu).where(LocalMenu.id == menu_id)
     )).scalar_one_or_none()
     if not menu:
-        raise HTTPException(status_code=404, detail="Menu not found")
+        raise HTTPException(status_code=404, detail="ไม่พบเมนูนี้")
 
     # Delete child menus' permissions first
     child_menus = (await db.execute(

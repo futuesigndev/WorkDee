@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import {
-  Layers, Plus, Trash2, X, Loader2, CheckCircle2, AlertCircle,
+  Plus, Trash2, X, Loader2, CheckCircle2, AlertCircle,
   ChevronUp, ChevronDown, Search, Edit2, ToggleLeft, ToggleRight,
   Save, FolderTree, ChevronRight
 } from "lucide-react"
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { API_URL, apiFetch } from "@/lib/api"
 import { isPermissionDenied, permissionErrorMessage } from "@/lib/errors"
 import AccessDenied from "@/components/AccessDenied"
+import FieldError from "@/components/FieldError"
 
 // ── Available icons for selector ──────────────────────────────────────────────
 const AVAILABLE_ICONS = [
@@ -47,8 +48,9 @@ export default function MenuManagementPage() {
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({
     key: "", label: "", path: "", icon: "Circle", parent_id: "", order: "0"
-  })
-
+  })  // Thai inline messages for the fields the browser used to answer itself (`required` bubbles come out in
+  // the browser's language). Keyed by field name; empty object = nothing wrong (task 027).
+  const [formErrors, setFormErrors] = useState<{ label?: string; key?: string; path?: string }>({})
   // ── Edit modal ───────────────────────────────────────────────────────────
   const [editMenu, setEditMenu] = useState<Menu | null>(null)
   const [editForm, setEditForm] = useState({
@@ -81,6 +83,7 @@ export default function MenuManagementPage() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot load on mount into state, which is what this effect is for (032)
   useEffect(() => { fetchMenus() }, [])
 
   const showMsg = (type: string, text: string) => {
@@ -134,9 +137,18 @@ export default function MenuManagementPage() {
   // ── Create ────────────────────────────────────────────────────────────────
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.key.trim() || !form.label.trim() || !form.path.trim()) return
+    // Validate in Thai, next to the field, instead of the browser's own bubble (the form is
+    // `noValidate`, task 027). This used to `return` silently, which told the admin nothing.
+    const problems: { label?: string; key?: string; path?: string } = {}
+    if (!form.label.trim()) problems.label = "กรอกชื่อเมนูก่อนบันทึก"
+    if (!form.key.trim()) problems.key = "กรอก key ของเมนูก่อนบันทึก"
+    if (!form.path.trim()) problems.path = "กรอก path ของเมนูก่อนบันทึก"
+    else if (!form.path.trim().startsWith("/")) problems.path = "path ต้องขึ้นต้นด้วย /"
+    setFormErrors(problems)
+    if (Object.keys(problems).length > 0) return
     setCreating(true)
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- request body is assembled field-by-field with an optional parent_id; typing it is a design task (032)
       const body: any = {
         key: form.key.trim(),
         label: form.label.trim(),
@@ -151,15 +163,15 @@ export default function MenuManagementPage() {
         body: JSON.stringify(body)
       })
       if (res.ok) {
-        showMsg("success", "Menu created successfully!")
+        showMsg("success", "เพิ่มเมนูแล้ว")
         setShowCreate(false)
         setForm({ key: "", label: "", path: "", icon: "Circle", parent_id: "", order: "0" })
         fetchMenus()
       } else {
         const err = await res.json()
-        showMsg("error", err.detail || "Failed to create menu")
+        showMsg("error", err.detail || "เพิ่มเมนูไม่สำเร็จ")
       }
-    } catch (err) { showMsg("error", permissionErrorMessage(err, "Network error")) }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")) }
     finally { setCreating(false) }
   }
 
@@ -172,6 +184,11 @@ export default function MenuManagementPage() {
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editMenu) return
+    if (!editForm.label.trim()) { showMsg("error", "กรอกชื่อเมนูก่อนบันทึก"); return }
+    if (!editForm.path.trim() || !editForm.path.trim().startsWith("/")) {
+      showMsg("error", "path ต้องขึ้นต้นด้วย /")
+      return
+    }
     setSaving(true)
     try {
       const res = await apiFetch(`${API_URL}/api/v1/menus/${editMenu.id}`, {
@@ -185,13 +202,13 @@ export default function MenuManagementPage() {
         })
       })
       if (res.ok) {
-        showMsg("success", "Menu updated!")
+        showMsg("success", "บันทึกเมนูแล้ว")
         setEditMenu(null)
         fetchMenus()
       } else {
-        showMsg("error", "Failed to update menu")
+        showMsg("error", "บันทึกเมนูไม่สำเร็จ")
       }
-    } catch (err) { showMsg("error", permissionErrorMessage(err, "Network error")) }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")) }
     finally { setSaving(false) }
   }
 
@@ -204,7 +221,7 @@ export default function MenuManagementPage() {
         body: JSON.stringify({ is_active: !menu.is_active })
       })
       fetchMenus()
-    } catch (err) { showMsg("error", permissionErrorMessage(err, "Failed to toggle menu")) }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "แก้ไขสถานะเมนูไม่สำเร็จ")) }
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -216,13 +233,13 @@ export default function MenuManagementPage() {
         method: "DELETE",
       })
       if (res.ok) {
-        showMsg("success", `"${menuToDelete.label}" deleted`)
+        showMsg("success", `ลบ "${menuToDelete.label}" แล้ว`)
         setMenuToDelete(null)
         fetchMenus()
       } else {
-        showMsg("error", "Failed to delete menu")
+        showMsg("error", "ลบเมนูไม่สำเร็จ")
       }
-    } catch (err) { showMsg("error", permissionErrorMessage(err, "Network error")) }
+    } catch (err) { showMsg("error", permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้")) }
     finally { setDeleting(false) }
   }
 
@@ -239,9 +256,9 @@ export default function MenuManagementPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-base-content tracking-tight mb-1">Menu Management</h1>
-          <p className="text-base-content/50 font-bold text-[10px] uppercase tracking-widest">
-            Navigation Structure & Hierarchy
+          <h1 className="text-2xl font-black text-base-content tracking-tight mb-1">จัดการเมนู</h1>
+          <p className="text-base-content/50 text-sm font-bold">
+            โครงสร้างเมนูและลำดับชั้น
           </p>
         </div>
         <button
@@ -249,7 +266,7 @@ export default function MenuManagementPage() {
           className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-content rounded-xl font-black text-sm hover:opacity-90 transition-all shadow-xl shadow-primary/20 active:scale-95"
         >
           <Plus size={16} />
-          Add Menu
+          เพิ่มเมนู
         </button>
       </div>
 
@@ -267,13 +284,13 @@ export default function MenuManagementPage() {
       {/* Stats bar */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: "Total Menus", value: menus.length },
-          { label: "Parent Menus", value: menus.filter(m => !m.parent_id).length },
-          { label: "Active", value: menus.filter(m => m.is_active).length },
+          { label: "เมนูทั้งหมด", value: menus.length },
+          { label: "เมนูหลัก", value: menus.filter(m => !m.parent_id).length },
+          { label: "เปิดใช้งาน", value: menus.filter(m => m.is_active).length },
         ].map(stat => (
           <div key={stat.label} className="bg-base-100 rounded-2xl border border-base-300 p-4 text-center shadow-sm">
             <div className="text-2xl font-black text-primary">{stat.value}</div>
-            <div className="text-[10px] font-black uppercase tracking-widest text-base-content/40 mt-0.5">{stat.label}</div>
+            <div className="text-[10px] font-black text-base-content/40 mt-0.5">{stat.label}</div>
           </div>
         ))}
       </div>
@@ -286,7 +303,7 @@ export default function MenuManagementPage() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/30" />
             <input
               type="text"
-              placeholder="Search menus..."
+              placeholder="ค้นหาเมนู..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-8 pr-4 py-2 text-sm bg-base-200/60 border-none rounded-xl outline-none focus:ring-2 focus:ring-primary/20 transition-all"
@@ -294,7 +311,7 @@ export default function MenuManagementPage() {
           </div>
           <div className="flex items-center gap-2 text-xs text-base-content/40 font-bold">
             <FolderTree size={14} />
-            {displayed.length} items
+            {displayed.length} รายการ
           </div>
         </div>
 
@@ -303,36 +320,39 @@ export default function MenuManagementPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-base-200/60 border-b border-base-300">
-                <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 w-10">#</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40">Icon</th>
+                <th className="px-6 py-3 text-[10px] font-black text-base-content/40 w-10">#</th>
+                <th className="px-4 py-3 text-[10px] font-black text-base-content/40">ไอคอน</th>
                 <th
-                  className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 cursor-pointer hover:text-base-content transition-colors"
+                  className="px-4 py-3 text-[10px] font-black text-base-content/40 cursor-pointer hover:text-base-content transition-colors"
                   onClick={() => handleSort("label")}
                 >
-                  <div className="flex items-center gap-1.5">Label <SortIcon col="label" /></div>
+                  {/* eslint-disable-next-line react-hooks/static-components -- SortIcon is a stateless inline helper; hoisting it would need a new props contract, left for a separate task (032) */}
+                  <div className="flex items-center gap-1.5">ชื่อเมนู <SortIcon col="label" /></div>
                 </th>
                 <th
-                  className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 cursor-pointer hover:text-base-content transition-colors hidden md:table-cell"
+                  className="px-4 py-3 text-[10px] font-black text-base-content/40 cursor-pointer hover:text-base-content transition-colors hidden md:table-cell"
                   onClick={() => handleSort("key")}
                 >
+                  {/* eslint-disable-next-line react-hooks/static-components -- same inline SortIcon helper as above (032) */}
                   <div className="flex items-center gap-1.5">Key <SortIcon col="key" /></div>
                 </th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 hidden lg:table-cell">Path</th>
+                <th className="px-4 py-3 text-[10px] font-black text-base-content/40 hidden lg:table-cell">Path</th>
                 <th
-                  className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 cursor-pointer hover:text-base-content transition-colors w-20"
+                  className="px-4 py-3 text-[10px] font-black text-base-content/40 cursor-pointer hover:text-base-content transition-colors w-20"
                   onClick={() => handleSort("order")}
                 >
-                  <div className="flex items-center gap-1.5">Order <SortIcon col="order" /></div>
+                  {/* eslint-disable-next-line react-hooks/static-components -- same inline SortIcon helper as above (032) */}
+                  <div className="flex items-center gap-1.5">ลำดับ <SortIcon col="order" /></div>
                 </th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 w-24">Status</th>
-                <th className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-base-content/40 w-24 text-right">Actions</th>
+                <th className="px-4 py-3 text-[10px] font-black text-base-content/40 w-24">สถานะ</th>
+                <th className="px-4 py-3 text-[10px] font-black text-base-content/40 w-24 text-right">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base-300/50">
               {displayed.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm text-base-content/30 font-bold">
-                    No menus found
+                    ไม่พบเมนู
                   </td>
                 </tr>
               ) : displayed.map((menu, idx) => {
@@ -385,7 +405,7 @@ export default function MenuManagementPage() {
                         </div>
                         {parentName && (
                           <div className="text-[10px] text-base-content/30 font-medium mt-0.5 pl-4">
-                            under {parentName}
+                            อยู่ในเมนู {parentName}
                           </div>
                         )}
                       </div>
@@ -405,14 +425,14 @@ export default function MenuManagementPage() {
                       <button
                         onClick={() => toggleActive(menu)}
                         className={cn(
-                          "flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full transition-all",
+                          "flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-full transition-all",
                           menu.is_active
                             ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                             : "bg-base-300 text-base-content/40 hover:bg-base-200"
                         )}
                       >
                         {menu.is_active ? <ToggleRight size={12} /> : <ToggleLeft size={12} />}
-                        {menu.is_active ? "Active" : "Off"}
+                        {menu.is_active ? "ใช้งาน" : "ปิด"}
                       </button>
                     </td>
                     <td className="px-4 py-3.5">
@@ -420,14 +440,14 @@ export default function MenuManagementPage() {
                         <button
                           onClick={() => openEdit(menu)}
                           className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-primary/10 text-base-content/40 hover:text-primary transition-all"
-                          title="Edit"
+                          title="แก้ไข"
                         >
                           <Edit2 size={13} />
                         </button>
                         <button
                           onClick={() => setMenuToDelete(menu)}
                           className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-error/10 text-base-content/40 hover:text-error transition-all"
-                          title="Delete"
+                          title="ลบ"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -450,51 +470,51 @@ export default function MenuManagementPage() {
                 <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
                   <Plus size={16} className="text-primary" />
                 </div>
-                <h2 className="font-black text-base">Add Menu</h2>
+                <h2 className="font-black text-base">เพิ่มเมนู</h2>
               </div>
               <button onClick={() => setShowCreate(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-base-200 transition-colors">
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
+            <form onSubmit={handleCreate} noValidate className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Label *</label>
+                  <label className="text-[10px] font-black text-base-content/40">ชื่อเมนู *</label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. Reports"
+                    placeholder="เช่น รายงาน"
                     value={form.label}
                     onChange={e => setForm({ ...form, label: e.target.value })}
                     className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-medium"
                   />
+                  <FieldError message={formErrors.label} />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Key * (unique)</label>
+                  <label className="text-[10px] font-black text-base-content/40">Key * (ห้ามซ้ำ)</label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. reports"
+                    placeholder="เช่น reports"
                     value={form.key}
                     onChange={e => setForm({ ...form, key: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
                     className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-mono"
                   />
+                  <FieldError message={formErrors.key} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Path *</label>
+                <label className="text-[10px] font-black text-base-content/40">Path *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. /dashboard/reports"
+                  placeholder="เช่น /dashboard/reports"
                   value={form.path}
                   onChange={e => setForm({ ...form, path: e.target.value })}
                   className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-mono"
                 />
+                <FieldError message={formErrors.path} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Icon</label>
+                  <label className="text-[10px] font-black text-base-content/40">ไอคอน</label>
                   <select
                     value={form.icon}
                     onChange={e => setForm({ ...form, icon: e.target.value })}
@@ -506,7 +526,7 @@ export default function MenuManagementPage() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Order</label>
+                  <label className="text-[10px] font-black text-base-content/40">ลำดับ</label>
                   <input
                     type="number"
                     min="0"
@@ -517,13 +537,13 @@ export default function MenuManagementPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Parent Menu (optional — leave blank for top-level)</label>
+                <label className="text-[10px] font-black text-base-content/40">เมนูหลัก (ไม่บังคับ — เว้นว่างถ้าเป็นเมนูบนสุด)</label>
                 <select
                   value={form.parent_id}
                   onChange={e => setForm({ ...form, parent_id: e.target.value })}
                   className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-medium"
                 >
-                  <option value="">— Top-level menu —</option>
+                  <option value="">— เมนูบนสุด —</option>
                   {parentMenus.map(m => (
                     <option key={m.id} value={m.id}>{m.label}</option>
                   ))}
@@ -535,7 +555,7 @@ export default function MenuManagementPage() {
                   onClick={() => setShowCreate(false)}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-base-300 text-sm font-black hover:bg-base-200 transition-colors"
                 >
-                  Cancel
+                  ยกเลิก
                 </button>
                 <button
                   type="submit"
@@ -543,7 +563,7 @@ export default function MenuManagementPage() {
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-content rounded-xl text-sm font-black hover:opacity-90 transition-all disabled:opacity-50"
                 >
                   {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  Create Menu
+                  สร้างเมนู
                 </button>
               </div>
             </form>
@@ -561,7 +581,7 @@ export default function MenuManagementPage() {
                   <Edit2 size={15} className="text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-black text-sm">Edit Menu</h2>
+                  <h2 className="font-black text-sm">แก้ไขเมนู</h2>
                   <p className="text-[10px] text-base-content/40 font-mono">{editMenu.key}</p>
                 </div>
               </div>
@@ -571,7 +591,7 @@ export default function MenuManagementPage() {
             </div>
             <form onSubmit={handleEdit} className="p-6 space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Label</label>
+                <label className="text-[10px] font-black text-base-content/40">ชื่อเมนู</label>
                 <input
                   type="text"
                   value={editForm.label}
@@ -580,7 +600,7 @@ export default function MenuManagementPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Path</label>
+                <label className="text-[10px] font-black text-base-content/40">Path</label>
                 <input
                   type="text"
                   value={editForm.path}
@@ -590,7 +610,7 @@ export default function MenuManagementPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Icon</label>
+                  <label className="text-[10px] font-black text-base-content/40">ไอคอน</label>
                   <select
                     value={editForm.icon}
                     onChange={e => setEditForm({ ...editForm, icon: e.target.value })}
@@ -602,7 +622,7 @@ export default function MenuManagementPage() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">Order</label>
+                  <label className="text-[10px] font-black text-base-content/40">ลำดับ</label>
                   <input
                     type="number"
                     min="0"
@@ -618,7 +638,7 @@ export default function MenuManagementPage() {
                   onClick={() => setEditMenu(null)}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-base-300 text-sm font-black hover:bg-base-200 transition-colors"
                 >
-                  Cancel
+                  ยกเลิก
                 </button>
                 <button
                   type="submit"
@@ -626,7 +646,7 @@ export default function MenuManagementPage() {
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-content rounded-xl text-sm font-black hover:opacity-90 transition-all disabled:opacity-50"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  Save Changes
+                  บันทึก
                 </button>
               </div>
             </form>
@@ -643,12 +663,12 @@ export default function MenuManagementPage() {
                 <Trash2 size={24} className="text-error" />
               </div>
               <div>
-                <h3 className="font-black text-base mb-1">Delete Menu?</h3>
+                <h3 className="font-black text-base mb-1">ลบเมนูนี้?</h3>
                 <p className="text-sm text-base-content/60">
-                  Delete <strong>"{menuToDelete.label}"</strong>?
+                  ต้องการลบ <strong>&quot;{menuToDelete.label}&quot;</strong> ใช่หรือไม่?
                   {!menuToDelete.parent_id && (
                     <span className="block mt-1 text-error/80 text-xs font-bold">
-                      ⚠ This will also delete all child menus!
+                      ⚠ ระบบจะลบเมนูย่อยทั้งหมดด้วย
                     </span>
                   )}
                 </p>
@@ -658,15 +678,15 @@ export default function MenuManagementPage() {
                   onClick={() => setMenuToDelete(null)}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-base-300 text-sm font-black hover:bg-base-200 transition-colors"
                 >
-                  Cancel
+                  ยกเลิก
                 </button>
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-error text-white rounded-xl text-sm font-black hover:bg-error/90 transition-all disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-error text-error-content rounded-xl text-sm font-black hover:bg-error/90 transition-all disabled:opacity-50"
                 >
                   {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  Delete
+                  ลบ
                 </button>
               </div>
             </div>

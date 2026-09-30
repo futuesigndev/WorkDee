@@ -9,7 +9,6 @@ import {
   LogOut, 
   PanelLeftClose,
   PanelLeftOpen,
-  X,
   Bell,
   ShieldCheck,
   MessageSquare,
@@ -24,15 +23,18 @@ import {
   Link2,
   Layers,
   BarChart2,
+  Briefcase,
   Lock,
   Home
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PRODUCT_NAME } from '@/lib/brand'
 import { API_URL, apiFetch, SessionExpiredError } from '@/lib/api'
 import { PERMISSION_DENIED_MESSAGE, isPermissionDenied } from '@/lib/errors'
 
 // Icon mapping to handle dynamic strings from DB
-const IconMap: Record<string, any> = {
+const IconMap: Record<string, LucideIcon> = {
   LayoutDashboard,
   Users,
   ShieldCheck,
@@ -47,6 +49,7 @@ const IconMap: Record<string, any> = {
   Link2,
   Layers,
   BarChart2,
+  Briefcase,
   Lock,
   Home,
 };
@@ -84,6 +87,31 @@ function writeSidebarPref(open: boolean): void {
   }
 }
 
+/**
+ * Who the shell says you are (task 023). Comes from `GET /api/v1/auth/me`, which has no permission
+ * requirement of its own — an account with zero menu grants can still see its own name.
+ */
+interface Identity {
+  employee_id: string
+  full_name: string
+  role_name: string
+}
+
+// Thai fallback for the card while the identity is loading or when that call fails.
+const IDENTITY_FALLBACK = 'ผู้ใช้'
+
+/**
+ * Two-character avatar from a name: first letter of the first and last word ("Admin User" → "AU",
+ * "นายบรรจง วงค์หลวง" → "นว"). A single word gives its first two characters. `Array.from` walks
+ * code points, so a Thai combining mark can never be split off into its own "letter".
+ */
+function initialsOf(value: string): string {
+  const words = value.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  if (words.length === 1) return Array.from(words[0]).slice(0, 2).join('')
+  return Array.from(words[0])[0] + Array.from(words[words.length - 1])[0]
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -92,6 +120,8 @@ export default function DashboardLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isMobile, setIsMobile] = useState(false)
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [identity, setIdentity] = useState<Identity | null>(null)
+  const [brand, setBrand] = useState(PRODUCT_NAME)
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [menusDenied, setMenusDenied] = useState(false)
@@ -144,6 +174,41 @@ export default function DashboardLayout({
     fetchMenus();
   }, []);
 
+  // The identity card. Failures are silent by design: the card falls back to "ผู้ใช้" rather than
+  // taking over the screen, because a missing name never blocks the work. A 401/SessionExpired here
+  // is already handled inside apiFetch (one refresh attempt, then /login).
+  useEffect(() => {
+    const fetchIdentity = async () => {
+      try {
+        const res = await apiFetch(`${API_URL}/api/v1/auth/me`);
+        if (res.ok) {
+          setIdentity(await res.json());
+        }
+      } catch {
+        // PermissionDenied / SessionExpired / network — leave the fallback in place.
+      }
+    };
+    fetchIdentity();
+  }, []);
+
+  // The brand name. Failures are silent by design: the sidebar falls back to the product name rather
+  // than showing an error, because a missing name never blocks any work.
+  useEffect(() => {
+    const fetchBrand = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          const name = typeof data?.app_name === 'string' ? data.app_name.trim() : '';
+          if (name) setBrand(name);
+        }
+      } catch {
+        // keep BRAND_FALLBACK
+      }
+    };
+    fetchBrand();
+  }, []);
+
   const toggleExpand = (key: string) => {
     setExpandedMenus(prev => {
       // Exclusive accordion: close all others, toggle the clicked one
@@ -166,6 +231,18 @@ export default function DashboardLayout({
   // Grouping logic (Now handled by API, just simple map)
   const rootMenus = menuItems;
 
+  // The header title: child menus (e.g. "รายการลงเวลา") are nested under their parent, so the label
+  // is looked up in both levels — otherwise every child route showed "Dashboard" here.
+  const currentViewLabel =
+    menuItems.flatMap((item) => [item, ...(item.children ?? [])]).find((item) => item.path === pathname)?.label
+    || 'ภาพรวม';
+
+  // Identity card values: the name (employee id when the name is empty), the role name, and initials
+  // derived from whatever is displayed. Roles are stored as data ("Admin", "Supervisor", …).
+  const identityName = identity?.full_name?.trim() || identity?.employee_id || IDENTITY_FALLBACK;
+  const identityRole = identity?.role_name ?? '';
+  const identityInitials = identity ? initialsOf(identityName) : initialsOf(IDENTITY_FALLBACK);
+
   return (
     <div className="min-h-screen bg-base-200 flex text-base-content selection:bg-primary selection:text-primary-content">
       {/* Sidebar */}
@@ -181,11 +258,16 @@ export default function DashboardLayout({
         <div className="h-full flex flex-col">
           {/* Brand */}
           <div className="p-6 pb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center text-primary-content font-black text-xl shadow-lg shadow-primary/20">
-                F
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 shrink-0 bg-primary rounded-xl flex items-center justify-center text-primary-content font-black text-xl shadow-lg shadow-primary/20">
+                {Array.from(brand)[0]?.toUpperCase() ?? 'W'}
               </div>
-              <span className="font-black text-xl tracking-tighter text-base-content">FutureSign</span>
+              <span
+                className="font-black text-xl tracking-tighter text-base-content truncate max-w-[150px]"
+                title={brand}
+              >
+                {brand}
+              </span>
             </div>
           </div>
 
@@ -204,7 +286,7 @@ export default function DashboardLayout({
                 "p-4 text-center text-xs",
                 menusDenied ? "text-error/80 font-bold" : "text-base-content/30 italic"
               )}>
-                {menusDenied ? PERMISSION_DENIED_MESSAGE : 'No access granted'}
+                {menusDenied ? PERMISSION_DENIED_MESSAGE : 'ยังไม่ได้รับสิทธิ์เข้าถึงเมนู'}
               </div>
             ) : (
               rootMenus.map((item) => {
@@ -231,7 +313,7 @@ export default function DashboardLayout({
                       
                       {isExpanded && (
                         <div className="pl-4 space-y-1 ml-4 border-l border-base-content/5">
-                          {children.map((child: any) => {
+                          {children.map((child) => {
                             const ChildIcon = IconMap[child.icon] || Circle;
                             return (
                               <button
@@ -284,7 +366,7 @@ export default function DashboardLayout({
               className="w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl font-bold text-error/80 hover:bg-error/10 hover:text-error transition-all group"
             >
               <LogOut size={18} className="group-hover:-translate-x-1 transition-transform" />
-              <span className="text-sm">Sign Out</span>
+              <span className="text-sm">ออกจากระบบ</span>
             </button>
           </div>
         </div>
@@ -298,7 +380,7 @@ export default function DashboardLayout({
             <button
               type="button"
               onClick={toggleSidebar}
-              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              aria-label={isSidebarOpen ? "ย่อแถบเมนู" : "ขยายแถบเมนู"}
               aria-expanded={isSidebarOpen}
               aria-controls="dashboard-sidebar"
               className="w-9 h-9 flex items-center justify-center bg-base-200 rounded-lg hover:bg-base-300 transition-colors"
@@ -306,9 +388,9 @@ export default function DashboardLayout({
               {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </button>
             <div className="flex flex-col">
-              <span className="text-[9px] font-black uppercase tracking-widest text-primary/60">Current View</span>
+              <span className="text-[10px] font-bold text-primary/60">มุมมองปัจจุบัน</span>
               <h2 className="text-lg font-black text-base-content tracking-tight">
-                {menuItems.find(m => m.path === pathname)?.label || 'Dashboard'}
+                {currentViewLabel}
               </h2>
             </div>
           </div>
@@ -316,7 +398,7 @@ export default function DashboardLayout({
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 bg-base-300/50 rounded-lg border border-base-content/5">
               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-[10px] font-bold text-base-content/60 uppercase tracking-tighter">System Online</span>
+              <span className="text-[10px] font-bold text-base-content/60 uppercase tracking-tighter">ระบบออนไลน์</span>
             </div>
 
             <button className="w-9 h-9 flex items-center justify-center relative bg-base-300/50 rounded-lg hover:bg-base-300 transition-colors">
@@ -328,11 +410,15 @@ export default function DashboardLayout({
             
             <div className="flex items-center gap-2.5 pl-1.5 group cursor-pointer">
               <div className="text-right hidden md:block">
-                <div className="text-xs font-black text-base-content leading-tight">Admin User</div>
-                <div className="text-[9px] font-bold text-primary uppercase tracking-widest">Internal Access</div>
+                <div className="text-xs font-black text-base-content leading-tight truncate max-w-[150px]" title={identityName}>
+                  {identityName}
+                </div>
+                <div className="text-[10px] font-bold text-primary truncate max-w-[150px]" title={identityRole}>
+                  {identityRole}
+                </div>
               </div>
-              <div className="w-9 h-9 rounded-xl bg-base-300 border border-base-content/10 flex items-center justify-center font-black text-xs text-base-content/40 group-hover:border-primary/30 transition-colors">
-                AD
+              <div className="w-9 h-9 shrink-0 rounded-xl bg-base-300 border border-base-content/10 flex items-center justify-center font-black text-xs text-base-content/70 group-hover:border-primary/30 transition-colors">
+                {identityInitials}
               </div>
             </div>
           </div>

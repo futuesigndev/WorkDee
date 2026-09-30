@@ -10,16 +10,14 @@ import {
   Activity,
   Calendar,
   RefreshCw,
-  ChevronUp,
-  ChevronDown,
   Clock,
   BarChart3,
   Users,
   Shield,
-  Layers,
   ArrowUpDown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatThaiDate, formatThaiTime } from '@/lib/datetime'
 import { API_URL, apiFetch } from '@/lib/api'
 import { isPermissionDenied } from '@/lib/errors'
 import AccessDenied from '@/components/AccessDenied'
@@ -55,11 +53,13 @@ export default function LogsPage() {
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' } | null>(null)
 
   // Data States
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- audit-log rows are the API's shape and have no frontend type yet; typing them is a design task (032)
   const [logs, setLogs] = useState<any[]>([])
   const [totalLogs, setTotalLogs] = useState(0)
   const [loadingLogs, setLoadingLogs] = useState(true)
   const [accessDenied, setAccessDenied] = useState(false)
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- summary payload is the API's shape, not modelled in the frontend yet (032)
   const [summary, setSummary] = useState<any>({
     total_logins_today: 0,
     unique_users_today: 0,
@@ -68,6 +68,7 @@ export default function LogsPage() {
   })
   const [loadingSummary, setLoadingSummary] = useState(true)
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- session rows are the API's shape and have no frontend type yet (032)
   const [sessions, setSessions] = useState<any[]>([])
   const [loadingSessions, setLoadingSessions] = useState(true)
 
@@ -148,14 +149,17 @@ export default function LogsPage() {
 
   // Trigger fetches on filter change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading the result list into state on mount/filter change is the purpose of this effect (032)
     fetchLogs()
   }, [fetchLogs])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading the summary into state is the purpose of this effect (032)
     fetchSummary()
   }, [fetchSummary])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading the session list into state is the purpose of this effect (032)
     fetchSessions()
   }, [fetchSessions])
 
@@ -239,14 +243,14 @@ export default function LogsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <History className="text-primary" /> Activity & Session Logs
+            <History className="text-primary" /> บันทึกการใช้งานและเซสชัน
           </h1>
-          <p className="text-base-content/50 text-sm">Real-time audit trail and session duration analytics</p>
+          <p className="text-base-content/50 text-sm font-bold">ติดตามเหตุการณ์และระยะเวลาการใช้งาน</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={handleRefreshAll} className="btn btn-ghost btn-sm text-base-content/50 hover:text-base-content gap-2">
             <RefreshCw size={16} className={cn((loadingLogs || loadingSummary || loadingSessions) && "animate-spin")} />
-            Refresh
+            รีเฟรช
           </button>
         </div>
       </div>
@@ -255,33 +259,33 @@ export default function LogsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { 
-            label: 'Logins Today', 
+            label: 'เข้าสู่ระบบวันนี้', 
             value: summary.total_logins_today, 
-            subtitle: 'Successful authentications',
+            subtitle: 'เข้าสู่ระบบสำเร็จ',
             icon: Shield, 
             color: 'text-emerald-500',
             loading: loadingSummary
           },
           { 
-            label: 'Unique Users Today', 
+            label: 'ผู้ใช้งานวันนี้', 
             value: summary.unique_users_today, 
-            subtitle: 'Different active accounts',
+            subtitle: 'บัญชีที่ใช้งานไม่ซ้ำกัน',
             icon: Users, 
             color: 'text-indigo-500',
             loading: loadingSummary
           },
           { 
-            label: 'Total Period Logins', 
+            label: 'เข้าสู่ระบบทั้งหมด', 
             value: summary.total_logins_period, 
-            subtitle: 'Logins in selected range',
+            subtitle: 'ในช่วงวันที่ที่เลือก',
             icon: Activity, 
             color: 'text-primary',
             loading: loadingSummary
           },
           { 
-            label: 'Top Active User', 
-            value: summary.top_users && summary.top_users[0] ? summary.top_users[0].full_name : 'N/A', 
-            subtitle: summary.top_users && summary.top_users[0] ? `${summary.top_users[0].login_count} logins this period` : 'No data in period',
+            label: 'ผู้ใช้งานมากที่สุด', 
+            value: summary.top_users && summary.top_users[0] ? summary.top_users[0].full_name : 'ไม่มีข้อมูล', 
+            subtitle: summary.top_users && summary.top_users[0] ? `เข้าสู่ระบบ ${summary.top_users[0].login_count} ครั้งในช่วงนี้` : 'ไม่มีข้อมูลในช่วงนี้',
             icon: Clock, 
             color: 'text-amber-500',
             loading: loadingSummary
@@ -289,7 +293,7 @@ export default function LogsPage() {
         ].map((stat, i) => (
           <div key={i} className="bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm flex items-center justify-between transition-all hover:shadow-md">
             <div className="space-y-1">
-              <span className="text-[10px] font-black uppercase text-base-content/30 tracking-widest">{stat.label}</span>
+              <span className="text-[10px] font-black text-base-content/30">{stat.label}</span>
               {stat.loading ? (
                 <div className="h-8 bg-base-200 animate-pulse rounded w-16"></div>
               ) : (
@@ -306,10 +310,10 @@ export default function LogsPage() {
 
       {/* Date & Filter controls */}
       <div className="bg-base-100 p-5 rounded-2xl border border-base-300 shadow-sm space-y-4">
-        <h2 className="text-sm font-bold flex items-center gap-2"><Filter size={16} className="text-primary" /> Filter Config</h2>
+        <h2 className="text-sm font-bold flex items-center gap-2"><Filter size={16} className="text-primary" /> ตัวกรองข้อมูล</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Date From</label>
+            <label className="text-[10px] font-black text-base-content/40 block mb-1.5">วันที่เริ่มต้น</label>
             <input 
               type="date" 
               value={dateFrom}
@@ -318,7 +322,7 @@ export default function LogsPage() {
             />
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Date To</label>
+            <label className="text-[10px] font-black text-base-content/40 block mb-1.5">วันที่สิ้นสุด</label>
             <input 
               type="date" 
               value={dateTo}
@@ -327,12 +331,12 @@ export default function LogsPage() {
             />
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Filter by User ID</label>
+            <label className="text-[10px] font-black text-base-content/40 block mb-1.5">กรองตามผู้ใช้งาน</label>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-base-content/30" size={14} />
               <input 
                 type="text" 
-                placeholder="Search actor..." 
+                placeholder="ค้นหาผู้ใช้งาน..." 
                 value={actorFilter}
                 onChange={(e) => { setActorFilter(e.target.value); setCurrentPage(1); }}
                 className="input input-bordered input-sm w-full pl-8 text-xs"
@@ -340,18 +344,18 @@ export default function LogsPage() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider block mb-1.5">Action Filter</label>
+            <label className="text-[10px] font-black text-base-content/40 block mb-1.5">กรองตามการทำงาน</label>
             <select
               value={actionFilter}
               onChange={(e) => { setActionFilter(e.target.value); setCurrentPage(1); }}
               className="select select-bordered select-sm w-full text-xs font-bold"
             >
-              <option value="ALL">All Actions</option>
-              <option value="AUTH_LOGIN_SUCCESS">Login Success (AUTH_LOGIN_SUCCESS)</option>
-              <option value="AUTH_LOGOUT">Logout (AUTH_LOGOUT)</option>
-              <option value="USER_PROVISIONED">User Provisioned</option>
-              <option value="USER_ACTIVATED">User Activated</option>
-              <option value="USER_DEPROVISIONED">User Deprovisioned</option>
+              <option value="ALL">ทุกการทำงาน</option>
+              <option value="AUTH_LOGIN_SUCCESS">เข้าสู่ระบบสำเร็จ (AUTH_LOGIN_SUCCESS)</option>
+              <option value="AUTH_LOGOUT">ออกจากระบบ (AUTH_LOGOUT)</option>
+              <option value="USER_PROVISIONED">เพิ่มผู้ใช้งาน (USER_PROVISIONED)</option>
+              <option value="USER_ACTIVATED">เปิดใช้งานผู้ใช้งาน (USER_ACTIVATED)</option>
+              <option value="USER_DEPROVISIONED">ปิดใช้งานผู้ใช้งาน (USER_DEPROVISIONED)</option>
             </select>
           </div>
         </div>
@@ -366,12 +370,12 @@ export default function LogsPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-black flex items-center gap-1.5">
-                  <BarChart3 className="text-primary" size={16} /> Total Usage Time per User
+                  <BarChart3 className="text-primary" size={16} /> เวลาใช้งานรวมต่อผู้ใช้งาน
                 </h3>
-                <p className="text-[10px] text-base-content/40 leading-normal">Sum of paired Login/Logout sessions in selected range</p>
+                <p className="text-[10px] text-base-content/40 leading-normal">รวมเวลาจากการจับคู่เข้า-ออกระบบในช่วงที่เลือก</p>
               </div>
               <span className="text-[10px] font-mono bg-base-200 px-2 py-0.5 rounded text-base-content/50">
-                {userAggregates.length} users
+                {userAggregates.length} คน
               </span>
             </div>
 
@@ -381,8 +385,8 @@ export default function LogsPage() {
               </div>
             ) : userAggregates.length === 0 ? (
               <div className="h-56 flex flex-col items-center justify-center text-center">
-                <span className="text-base-content/20 italic font-black text-xl mb-2">NO_SESSION_DATA</span>
-                <span className="text-[10px] text-base-content/40 italic">Ensure users have Login and Logout activities within this timeframe.</span>
+                <span className="text-base-content/20 italic font-black text-xl mb-2">ไม่พบข้อมูลการใช้งาน</span>
+                <span className="text-[10px] text-base-content/40 italic">ตรวจสอบว่าผู้ใช้งานมีกิจกรรมเข้าและออกจากระบบในช่วงเวลานี้</span>
               </div>
             ) : (
               <div className="h-56 flex items-end justify-around gap-2 px-2 border-b border-base-300 pb-2">
@@ -393,7 +397,7 @@ export default function LogsPage() {
                     <div className="absolute bottom-full mb-2 bg-neutral text-neutral-content text-[10px] p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20 shadow-lg leading-normal">
                       <div className="font-bold">{item.full_name}</div>
                       <div className="text-primary-content">{formatDuration(item.total_minutes)}</div>
-                      <div className="text-neutral-content/60">{item.session_count} sessions</div>
+                      <div className="text-neutral-content/60">{item.session_count} ครั้ง</div>
                     </div>
                     
                     {/* Bar */}
@@ -413,7 +417,7 @@ export default function LogsPage() {
           </div>
           
           <div className="text-[9px] text-base-content/40 text-right mt-2 italic">
-            * Showing top 10 active users. Hover bar to view precise session details.
+            * แสดง 10 ผู้ใช้งานที่ใช้งานมากที่สุด ชี้ที่แท่งกราฟเพื่อดูรายละเอียด
           </div>
         </div>
 
@@ -423,34 +427,34 @@ export default function LogsPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-black flex items-center gap-1.5">
-                  <Calendar className="text-indigo-500" size={16} /> Monthly Usage Summaries
+                  <Calendar className="text-indigo-500" size={16} /> สรุปเวลาใช้งาน
                 </h3>
-                <p className="text-[10px] text-base-content/40 leading-normal">Grouped work hours per user and period</p>
+                <p className="text-[10px] text-base-content/40 leading-normal">รวมชั่วโมงทำงานต่อผู้ใช้งานและช่วงเวลา</p>
               </div>
               <div className="flex gap-1.5">
                 <button 
                   onClick={() => setSessionGroupBy("month")}
                   className={cn("px-2 py-0.5 text-[9px] font-bold rounded transition-all", sessionGroupBy === 'month' ? "bg-indigo-500 text-white" : "bg-base-200 hover:bg-base-300 text-base-content/60")}
                 >
-                  Month
+                  เดือน
                 </button>
                 <button 
                   onClick={() => setSessionGroupBy("day")}
                   className={cn("px-2 py-0.5 text-[9px] font-bold rounded transition-all", sessionGroupBy === 'day' ? "bg-indigo-500 text-white" : "bg-base-200 hover:bg-base-300 text-base-content/60")}
                 >
-                  Day
+                  วัน
                 </button>
               </div>
             </div>
 
             <div className="overflow-x-auto max-h-[220px]">
               <table className="w-full text-left text-xs border-collapse">
-                <thead className="sticky top-0 bg-base-100 border-b border-base-300 text-[10px] font-black uppercase text-base-content/40">
+                <thead className="sticky top-0 bg-base-100 border-b border-base-300 text-[10px] font-black text-base-content/40">
                   <tr>
-                    <th className="pb-2">User / Actor</th>
-                    <th className="pb-2">Period</th>
-                    <th className="pb-2 text-center">Sessions</th>
-                    <th className="pb-2 text-right">Total Duration</th>
+                    <th className="pb-2">ผู้ใช้งาน</th>
+                    <th className="pb-2">ช่วงเวลา</th>
+                    <th className="pb-2 text-center">จำนวนครั้ง</th>
+                    <th className="pb-2 text-right">เวลารวม</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-base-200">
@@ -463,7 +467,7 @@ export default function LogsPage() {
                   ) : sessions.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="py-10 text-center text-[10px] text-base-content/30 italic">
-                        No monthly records found.
+                        ไม่พบข้อมูลในช่วงนี้
                       </td>
                     </tr>
                   ) : (
@@ -486,7 +490,7 @@ export default function LogsPage() {
             </div>
           </div>
           <div className="text-[9px] text-base-content/30 italic mt-3">
-            * Session calculations automatically pair logins and logouts, assuming max 8hr session length on missing logout.
+            * ระบบจับคู่เข้า-ออกระบบให้อัตโนมัติ หากไม่มีการออกจากระบบ จะนับให้ไม่เกิน 8 ชั่วโมง
           </div>
         </div>
       </div>
@@ -496,32 +500,32 @@ export default function LogsPage() {
         <div className="p-5 border-b border-base-300 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-black flex items-center gap-1.5">
-              <Terminal className="text-warning" size={16} /> Audit Trail logs
+              <Terminal className="text-warning" size={16} /> บันทึกเหตุการณ์
             </h3>
-            <p className="text-[10px] text-base-content/40 leading-normal">Granular chronological log entries</p>
+            <p className="text-[10px] text-base-content/40 leading-normal">รายการบันทึกตามลำดับเวลา</p>
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-base-200/40 border-b border-base-300 text-[10px] font-black uppercase text-base-content/40">
+            <thead className="bg-base-200/40 border-b border-base-300 text-[10px] font-black text-base-content/40">
               <tr>
                 <th className="px-6 py-4 cursor-pointer select-none hover:text-base-content transition-colors" onClick={() => handleSort('created_at')}>
                   <div className="flex items-center gap-1">
-                    Timestamp <ArrowUpDown size={12} />
+                    วันเวลา <ArrowUpDown size={12} />
                   </div>
                 </th>
                 <th className="px-6 py-4 cursor-pointer select-none hover:text-base-content transition-colors" onClick={() => handleSort('action')}>
                   <div className="flex items-center gap-1">
-                    Action <ArrowUpDown size={12} />
+                    การทำงาน <ArrowUpDown size={12} />
                   </div>
                 </th>
                 <th className="px-6 py-4 cursor-pointer select-none hover:text-base-content transition-colors" onClick={() => handleSort('actor_id')}>
                   <div className="flex items-center gap-1">
-                    Actor <ArrowUpDown size={12} />
+                    ผู้ใช้งาน <ArrowUpDown size={12} />
                   </div>
                 </th>
-                <th className="px-6 py-4">Details</th>
+                <th className="px-6 py-4">รายละเอียด</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base-200">
@@ -534,16 +538,16 @@ export default function LogsPage() {
               ) : sortedLogs.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-6 py-16 text-center">
-                    <div className="text-base-content/20 font-black text-3xl mb-2 italic">EMPTY_LOG</div>
-                    <span className="text-xs text-base-content/30 italic">No logs matched the selected criteria.</span>
+                    <div className="text-base-content/20 font-black text-3xl mb-2 italic">ไม่พบข้อมูล</div>
+                    <span className="text-xs text-base-content/30 italic">ไม่พบบันทึกที่ตรงกับเงื่อนไข</span>
                   </td>
                 </tr>
               ) : (
                 sortedLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-base-200/20 transition-colors">
                     <td className="px-6 py-4 font-mono text-[10px] text-base-content/60">
-                      {new Date(log.created_at).toLocaleDateString()}<br/>
-                      {new Date(log.created_at).toLocaleTimeString()}
+                      {formatThaiDate(log.created_at)}<br/>
+                      {formatThaiTime(log.created_at)}
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn("px-2 py-0.5 rounded text-[9px] font-black font-mono", getActionColor(log.action))}>
@@ -560,7 +564,7 @@ export default function LogsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-base-content/70 font-semibold">{log.details || '-'}</div>
-                      <div className="text-[9px] text-base-content/35 font-mono mt-0.5">IP: {log.ip_address || 'Internal'}</div>
+                      <div className="text-[9px] text-base-content/35 font-mono mt-0.5">IP: {log.ip_address || 'ภายใน'}</div>
                     </td>
                   </tr>
                 ))
@@ -573,11 +577,11 @@ export default function LogsPage() {
         {!loadingLogs && totalLogs > 0 && (
           <div className="bg-base-100 p-4 border-t border-base-300 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
             <div className="text-base-content/50">
-              Showing {Math.min((currentPage - 1) * itemsPerPage + 1, totalLogs)} to {Math.min(currentPage * itemsPerPage, totalLogs)} of {totalLogs} entries
+              แสดง {Math.min((currentPage - 1) * itemsPerPage + 1, totalLogs)}–{Math.min(currentPage * itemsPerPage, totalLogs)} จาก {totalLogs} รายการ
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
-                <span className="text-base-content/40">Show</span>
+                <span className="text-base-content/40">จำนวนต่อหน้า</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => {
@@ -597,7 +601,7 @@ export default function LogsPage() {
                   disabled={currentPage === 1}
                   className="px-3 py-1.5 bg-base-200 hover:bg-base-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-bold transition-colors cursor-pointer"
                 >
-                  Previous
+                  ก่อนหน้า
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                   <button
@@ -618,7 +622,7 @@ export default function LogsPage() {
                   disabled={currentPage === totalPages || totalPages === 0}
                   className="px-3 py-1.5 bg-base-200 hover:bg-base-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-bold transition-colors cursor-pointer"
                 >
-                  Next
+                  ถัดไป
                 </button>
               </div>
             </div>

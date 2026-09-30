@@ -1,7 +1,7 @@
 // ในฝั่ง Browser (Client-side) เราใช้ relative path เพื่อส่งคำขอผ่าน Next.js Proxy
-// ป้องกันปัญหา Mixed Content (HTTPS -> HTTP) และ CORS เมื่อเปิดในมือถือผ่าน ngrok
+// ป้องกันปัญหา Mixed Content (HTTPS -> HTTP) และ CORS เมื่อเปิดจากมือถือผ่าน URL ภายนอก (tunnel)
 const isBrowser = typeof window !== 'undefined';
-export const API_URL = isBrowser ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8012");
+export const API_URL = isBrowser ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8019");
 
 // Backend refresh endpoint (via the Next.js rewrite when running in the browser).
 const REFRESH_PATH = `${API_URL}/api/v1/auth/refresh`;
@@ -63,7 +63,7 @@ function showRedirectOverlay() {
   ].join(';');
   overlay.innerHTML = `
     <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite"></div>
-    <p style="color:#fff;font-size:14px;font-weight:700;letter-spacing:0.05em">Session expired — redirecting...</p>
+    <p style="color:#fff;font-size:14px;font-weight:700;letter-spacing:0.05em">เซสชันหมดอายุ กำลังพาไปหน้าเข้าสู่ระบบ...</p>
     <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
   `;
   document.body.appendChild(overlay);

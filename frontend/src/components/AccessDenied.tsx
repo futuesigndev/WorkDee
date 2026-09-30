@@ -24,7 +24,7 @@ export default function AccessDenied({
         <div className="inline-flex p-3 rounded-2xl bg-error/10 text-error">
           <ShieldAlert size={28} />
         </div>
-        <h2 className="text-lg font-black tracking-tight text-base-content">Access denied</h2>
+        <h2 className="text-lg font-black tracking-tight text-base-content">ไม่มีสิทธิ์เข้าถึง</h2>
         <p className="text-sm font-medium text-base-content/60">{message}</p>
       </div>
     </div>

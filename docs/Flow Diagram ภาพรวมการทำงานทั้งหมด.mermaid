@@ -1,0 +1,33 @@
+flowchart TD
+    Start([👤 พนักงานเปิด LINE]) --> Consent{ยินยอม<br/>หรือยัง?}
+    Consent -->|ไม่| ConsentPage[📋 หน้า Consent]
+    ConsentPage -->|ยอมรับ| Main
+    Consent -->|ยอมรับแล้ว| Main[📱 หน้าลงเวลาหลัก]
+    
+    Main --> Check{อยู่ใน<br/>พื้นที่?}
+    Check -->|ใน| Photo[📸 ถ่ายภาพ]
+    Check -->|100-200 ม.| Reason1[📝 กรอกเหตุผล]
+    Check -->|> 200 ม.| Reason2[📝 กรอกเหตุผล]
+    
+    Reason1 --> AutoApprove[✅ Auto-Approve]
+    Reason2 --> FlagRed[🔴 Flag แดง]
+    Photo --> TimeCheck[⏰ ตรวจเวลา]
+    AutoApprove --> TimeCheck
+    FlagRed --> TimeCheck
+    
+    TimeCheck --> Save[💾 บันทึก Log]
+    Save --> Flex[💬 ส่ง Flex Message]
+    Flex --> End([✅ เสร็จสิ้น])
+    
+    FlagRed --> HR[👨‍💼 HR Review Center]
+    HR --> Decision{HR<br/>ตัดสิน?}
+    Decision -->|อนุมัติ| Approve[✅ อนุมัติ]
+    Decision -->|ปฏิเสธ| Reject[❌ ปฏิเสธ]
+    Approve --> Notify1[💬 แจ้งพนักงาน]
+    Reject --> Notify2[💬 แจ้งพนักงาน]
+    
+    style Start fill:#00B900,color:#fff
+    style End fill:#00B900,color:#fff
+    style FlagRed fill:#F44336,color:#fff
+    style AutoApprove fill:#4CAF50,color:#fff
+    style HR fill:#1976D2,color:#fff

@@ -21,6 +21,7 @@ class AdminAppSettingsSchema(BaseModel):
     line_channel_access_token: Optional[str] = None
     line_channel_secret: Optional[str] = None
     line_liff_id: Optional[str] = None
+    line_basic_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -33,14 +34,14 @@ class AppSettingsSchema(BaseModel):
     branding_text: Optional[str] = "Empowering Digital Enterprise"
     sub_text: Optional[str] = "Experience the next generation of multi-application management with our secure, unified platform."
     line_liff_id: Optional[str] = None
+    line_basic_id: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 @router.get("", response_model=AppSettingsSchema)
 async def get_settings(
-    db: AsyncSession = Depends(get_db),
-    _current_user = Depends(require_permission("settings"))
+    db: AsyncSession = Depends(get_db)
 ):
     stmt = select(AppSettings).limit(1)
     result = await db.execute(stmt)
@@ -49,7 +50,7 @@ async def get_settings(
     if not settings:
         # Return default if not initialized
         return AppSettingsSchema(
-            app_name="FutureSign Multi-App",
+            app_name="WorkDee",
             theme="minimalist-slate",
             dark_mode="system",
             line_liff_id=app_settings.LINE_LIFF_ID
@@ -108,7 +109,7 @@ async def get_admin_settings(
     
     if not settings:
         return AdminAppSettingsSchema(
-            app_name="FutureSign Multi-App",
+            app_name="WorkDee",
             theme="minimalist-slate",
             dark_mode="system"
         )
@@ -139,6 +140,7 @@ async def update_admin_settings(
     settings.line_channel_access_token = settings_data.line_channel_access_token
     settings.line_channel_secret = settings_data.line_channel_secret
     settings.line_liff_id = settings_data.line_liff_id
+    settings.line_basic_id = settings_data.line_basic_id
     
     await db.commit()
     await db.refresh(settings)

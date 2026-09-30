@@ -105,7 +105,7 @@ async def create_role(
     stmt = select(LocalRole).where(LocalRole.name == payload.name)
     existing = (await db.execute(stmt)).scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=400, detail="Role name already exists")
+        raise HTTPException(status_code=400, detail="ชื่อบทบาทนี้มีอยู่แล้ว")
     
     new_role = LocalRole(
         name=payload.name,
@@ -127,18 +127,18 @@ async def update_role(
     stmt = select(LocalRole).where(LocalRole.id == role_id)
     role = (await db.execute(stmt)).scalar_one_or_none()
     if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+        raise HTTPException(status_code=404, detail="ไม่พบบทบาทนี้")
     
     # Protect system roles from name changes
     if role.is_system_role and payload.name and payload.name != role.name:
-        raise HTTPException(status_code=400, detail="Cannot rename system role")
+        raise HTTPException(status_code=400, detail="เปลี่ยนชื่อบทบาทของระบบไม่ได้")
     
     if payload.name:
         # Check if new name exists elsewhere
         name_stmt = select(LocalRole).where(LocalRole.name == payload.name, LocalRole.id != role_id)
         existing = (await db.execute(name_stmt)).scalar_one_or_none()
         if existing:
-            raise HTTPException(status_code=400, detail="Role name already exists")
+            raise HTTPException(status_code=400, detail="ชื่อบทบาทนี้มีอยู่แล้ว")
         role.name = payload.name
         
     if payload.description is not None:
@@ -157,10 +157,10 @@ async def delete_role(
     stmt = select(LocalRole).where(LocalRole.id == role_id)
     role = (await db.execute(stmt)).scalar_one_or_none()
     if not role:
-        raise HTTPException(status_code=404, detail="Role not found")
+        raise HTTPException(status_code=404, detail="ไม่พบบทบาทนี้")
     
     if role.is_system_role:
-        raise HTTPException(status_code=400, detail="Cannot delete system role")
+        raise HTTPException(status_code=400, detail="ลบบทบาทของระบบไม่ได้")
     
     # Delete associated permissions first (cascade delete)
     await db.execute(delete(RoleMenuPermission).where(RoleMenuPermission.role_id == role_id))

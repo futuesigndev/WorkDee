@@ -166,9 +166,9 @@ docker compose logs -f
 ```
 
 เปิดใช้งาน:
-- Frontend: http://localhost:3012
-- Backend API: http://localhost:8012
-- API Docs: http://localhost:8012/docs
+- Frontend: http://localhost:3019
+- Backend API: http://localhost:8019
+- API Docs: http://localhost:8019/docs
 
 ### Option B: Local Development
 
@@ -180,7 +180,7 @@ python -m venv .venv
 source .venv/bin/activate       # Linux/macOS
 pip install -r requirements.txt
 cp .env.example .env            # แก้ไขค่าใน .env
-uvicorn app.main:app --host 0.0.0.0 --port 8012 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8019 --reload
 
 # Terminal 2 — Frontend
 cd frontend
@@ -204,7 +204,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 **2. กำหนด CORS Origins**
 ```bash
 # backend/.env
-CORS_ORIGINS="http://localhost:3012,https://your-production-domain.com"
+CORS_ORIGINS="http://localhost:3019,https://your-production-domain.com"
 ```
 
 **3. กำหนด Production Cookie Settings**
@@ -303,7 +303,7 @@ if binding:
 | [DEPLOY_GUIDE.md](docs/DEPLOY_GUIDE.md) | คู่มือ Deploy ฉบับสมบูรณ์ + Business Logic Guide |
 | [LINE_SETUP_GUIDE.md](docs/LINE_SETUP_GUIDE.md) | ตั้งค่า LINE OA + LIFF + Webhook |
 | [CORE-API_INTEGRATION_GUIDE.md](docs/CORE-API_INTEGRATION_GUIDE.md) | Integration กับ FutureSign Core-API |
-| [Backend API Docs](http://localhost:8012/docs) | Swagger UI (เมื่อรัน backend) |
+| [Backend API Docs](http://localhost:8019/docs) | Swagger UI (เมื่อรัน backend) |
 
 ---
 

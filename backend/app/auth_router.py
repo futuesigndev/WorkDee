@@ -5,13 +5,41 @@ from app.database import get_db
 from app.core_api import core_api_client
 from app.models import LocalUser, LocalRole, LocalMenu, RoleMenuPermission, AppSettings, AuditLog
 from pydantic import BaseModel
-from app.dependencies import get_current_user_id
+from app.dependencies import get_current_user_id, session_is_live, SESSION_REVOKED_DETAIL
 from app.config import settings
 from app.redis_client import get_redis, refresh_token_key
+from app import session_store
 from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
+import time
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _claim_sub(access_token: str | None) -> str | None:
+    """The `sub` claim inside the access-token cookie — read, never trusted (task 028).
+
+    python-jose validates `exp` by default and this token is normally expired by the time we look at
+    it, so both checks are disabled. The signature is deliberately **not** verified: WorkDee holds no
+    Core-API signing key (no shared secret, no JWKS, no introspection endpoint — see 028-report.md §1),
+    so this value may never decide anything by itself. Callers use it as a consistency check against
+    our own Redis record, or for an audit line — never to look up another session's data.
+    """
+    if not access_token:
+        return None
+    try:
+        from jose import jwt
+
+        payload = jwt.decode(
+            access_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"verify_signature": False, "verify_exp": False},
+        )
+    except Exception:
+        return None
+    sub = payload.get("sub")
+    return sub if isinstance(sub, str) and sub else None
 
 class LoginRequest(BaseModel):
     employee_id: str
@@ -44,7 +72,7 @@ async def login(
                 # System already has users → only provisioned employees may login
                 raise HTTPException(
                     status_code=403,
-                    detail="Access denied. Your account has not been provisioned. Please contact an administrator."
+                    detail="บัญชีนี้ยังไม่ได้รับสิทธิ์เข้าใช้งานระบบ กรุณาติดต่อผู้ดูแลระบบ"
                 )
 
             # No users exist yet → bootstrap: first login becomes Admin
@@ -71,13 +99,16 @@ async def login(
             await db.flush()
 
         # 3. Set HttpOnly Cookies — ค่าทั้งหมดอ่านจาก settings (.env)
+        #    Task 028: the access *cookie* now lives for the whole session cap while the token inside
+        #    keeps its own life. Before, max_age equalled the token's life, so an idle browser dropped
+        #    the cookie and could never reach /auth/refresh with its 7-day refresh token.
         response.set_cookie(
             key="access_token",
             value=core_data["access_token"],
             httponly=True,
             secure=settings.COOKIE_SECURE,
             samesite=settings.COOKIE_SAMESITE,
-            max_age=settings.ACCESS_TOKEN_EXPIRE_SECONDS
+            max_age=settings.access_cookie_max_age_seconds
         )
         response.set_cookie(
             key="refresh_token",
@@ -107,7 +138,7 @@ async def login(
         audit = AuditLog(
             action="AUTH_LOGIN_SUCCESS",
             actor_id=user.employee_id,
-            details=f"User {user.full_name} logged in successfully",
+            details=f"ผู้ใช้ {user.full_name} เข้าสู่ระบบสำเร็จ",
             ip_address=ip_addr,
             metadata_json={"full_name": user.full_name, "department": user.department}
         )
@@ -119,11 +150,10 @@ async def login(
         #    If Redis is unreachable, login still succeeds — Core-API already authenticated
         #    the user; refresh will then fail closed until Redis is reachable again.
         try:
-            await redis.set(
-                refresh_token_key(user.employee_id),
-                core_data["refresh_token"],
-                ex=settings.REFRESH_TOKEN_EXPIRE_SECONDS,
-            )
+            # Stores the refresh token *and* the two task-028 records: the session meta
+            # (`renewals` = 0, `started_at`) and the reverse index `/auth/refresh`
+            # looks the session up by.
+            await session_store.start_session(redis, user.employee_id, core_data["refresh_token"])
         except RedisError as e:
             print(f"Redis error at login (refresh token not stored): {e}")
 
@@ -187,22 +217,54 @@ async def get_user_menus(
         
     return hierarchy
 
+@router.get("/me")
+async def get_my_identity(
+    employee_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Who the session belongs to — the admin shell's identity card (task 023).
+
+    Deliberately tiny and read-only: the name, the role name and the ids the shell needs to draw the
+    avatar. It carries no permission of its own — the session guard in `get_current_user_id` is what
+    authorises it — so an account with **zero** menu grants can still see its own name.
+    """
+    row = (await db.execute(
+        select(LocalUser.employee_id, LocalUser.full_name, LocalRole.name, LocalUser.role_id)
+        .join(LocalRole, LocalUser.role_id == LocalRole.id)
+        .where(LocalUser.employee_id == employee_id)
+    )).first()
+    if row is None:
+        # Unreachable through `get_current_user_id`; kept so a direct call can never 500.
+        raise HTTPException(status_code=401, detail=SESSION_REVOKED_DETAIL)
+    return {
+        "employee_id": row[0],
+        "full_name": row[1],
+        "role_name": row[2],
+        "role_id": str(row[3]),
+    }
+
+
 @router.post("/refresh")
 async def refresh(
     response: Response,
     redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db),
     refresh_token: str | None = Cookie(None),
     access_token: str | None = Cookie(None),
 ):
-    """Exchange the refresh_token cookie for new tokens.
+    """Exchange the refresh_token cookie for new tokens (task 023 gates + task 028 hardening).
 
-    Core-API rotates the refresh token on every use, so the rotated pair must replace
-    both the cookies and the Redis value. The access token is expected to be expired
-    here, so it is only *read* (the `sub` claim), never verified — the same
-    claim-read pattern logout uses. Redis is the revocation gate: a missing key or a
-    value that doesn't match the cookie means the session is dead, so fail closed.
+    Core-API rotates the refresh token on every use, so the rotated pair must replace both the cookies
+    and the Redis value. Two things changed in task 028:
+
+    * **Who the caller is comes from our own record**, found by the refresh token itself
+      (`refresh_owner:<fingerprint>` → employee id). The access cookie's `sub` is only a consistency
+      check: it is not verifiable in WorkDee, and a claim that disagrees with the token's owner is
+      refused *without touching anybody's records* — the old mismatch branch deleted that key, which
+      let a forged cookie sign another employee out (`.scratch/probe028_subtrust_before.txt`).
+    * **The session has a hard cap**: at most `SESSION_MAX_RENEWALS` renewals and at most
+      `SESSION_MAX_AGE_MINUTES` minutes since login. Hitting either one really ends the session.
     """
-    from jose import jwt
 
     def _expired() -> JSONResponse:
         # Headers set on the injected Response are dropped when an HTTPException is
@@ -212,30 +274,58 @@ async def refresh(
         resp.delete_cookie("refresh_token")
         return resp
 
-    # 1. The refresh_token cookie is required.
-    if not refresh_token:
+    async def _end_session(employee_id: str, reason: str) -> None:
+        """Remove every server-side record of this session before refusing (best effort)."""
+        try:
+            await session_store.end_session(redis, employee_id)
+        except RedisError as e:
+            print(f"Redis error while ending a session ({reason}): {e}")
+
+    def _already_renewed() -> JSONResponse:
+        """Two tabs, one token: the other tab rotated it a moment ago — not an error.
+
+        No cookies are set and nothing is deleted; the caller retries its request with the cookies the
+        first tab already installed. A stranger replaying an old token gets this answer too and gains
+        nothing from it — there is no token in it.
+        """
+        return JSONResponse(status_code=200, content={"message": "Token already renewed"})
+
+    # 1. Both cookies are required: the refresh cookie identifies the session, the access cookie
+    #    states who the caller believes they are (checked in step 3, never trusted).
+    if not refresh_token or not access_token:
+        return _expired()
+    claimed_employee = _claim_sub(access_token)
+    if not claimed_employee:
         return _expired()
 
-    # 2. Read employee_id from the access token claim (it is normally expired by now;
-    #    python-jose checks exp by default, so verify_exp must be disabled too).
-    employee_id = None
-    if access_token:
-        try:
-            payload = jwt.decode(
-                access_token,
-                settings.SECRET_KEY,
-                algorithms=[settings.ALGORITHM],
-                options={"verify_signature": False, "verify_exp": False}
-            )
-            employee_id = payload.get("sub")
-        except Exception:
-            employee_id = None
-    if not employee_id:
+    # 2. Redis tells us who owns this refresh token. Unreachable Redis => fail closed.
+    try:
+        employee_id = await session_store.owner_of_token(redis, refresh_token)
+        rotated_away = employee_id is None and bool(
+            await session_store.was_just_rotated(redis, refresh_token)
+        )
+    except RedisError as e:
+        print(f"Redis error at refresh (failing closed): {e}")
         return _expired()
+
+    if employee_id is None:
+        return _already_renewed() if rotated_away else _expired()
 
     key = refresh_token_key(employee_id)
 
-    # 3. Redis gates revocation. Unreachable Redis => fail closed (state unverifiable).
+    # 3. The claim in the access cookie must agree with the token's owner. A disagreement means a
+    #    forged or edited cookie: refuse, and leave the claimed employee's records untouched.
+    if claimed_employee != employee_id:
+        return _expired()
+
+    # 4. The live local row gates the session (task 023): a deleted, deactivated or deprovisioned
+    #    employee cannot mint a new access token, and every record of the session is dropped so it
+    #    cannot come back to life.
+    if not await session_is_live(db, employee_id, access_token):
+        await _end_session(employee_id, "revoked user")
+        return _expired()
+
+    # 5. Redis gates revocation. Unreachable Redis => fail closed (state unverifiable).
     try:
         stored = await redis.get(key)
     except RedisError as e:
@@ -247,49 +337,74 @@ async def refresh(
         return _expired()
 
     if stored != refresh_token:
-        # Cookie doesn't match the stored token: stale or stolen. Drop the session whole.
-        try:
-            await redis.delete(key)
-        except RedisError as e:
-            print(f"Redis error while invalidating mismatched token: {e}")
+        # A stale token belonging to this same employee (an old tab, or a session replaced by a new
+        # sign-in). Refuse the *caller*, but never delete the live session's records: a stale cookie
+        # must not be able to sign the person out (task 028).
         return _expired()
 
-    # 4. Exchange with Core-API. Any failure => clean 401 (never leak exception text).
+    # 6. The session cap (task 028, Amendment 1). No record => fail closed: a session recorded before
+    #    this task cannot be renewed, so the person signs in once and gets a full 60 minutes.
+    try:
+        state = await session_store.session_state(redis, employee_id)
+    except RedisError as e:
+        print(f"Redis error at refresh (failing closed): {e}")
+        return _expired()
+    if state is None:
+        return _expired()
+    if int(time.time()) - int(state.get("started_at") or 0) > settings.session_max_age_seconds:
+        await _end_session(employee_id, "age cap")
+        return _expired()
+    if int(state.get("renewals") or 0) >= settings.session_max_renewals:
+        await _end_session(employee_id, "renewal cap")
+        return _expired()
+
+    # 7. Exchange with Core-API. Any failure => clean 401 (never leak exception text) — unless the
+    #    token was rotated under us in the meantime (two tabs refreshing at once), which is not a
+    #    failure at all.
     try:
         core_data = await core_api_client.refresh_token(refresh_token)
     except Exception as e:
         print(f"Core-API refresh failed: {e}")
         try:
-            await redis.delete(key)
+            if await redis.get(key) not in (None, refresh_token):
+                return _already_renewed()
         except RedisError:
             pass
+        await _end_session(employee_id, "core-api failure")
         return _expired()
 
     new_access = core_data.get("access_token")
     new_refresh = core_data.get("refresh_token")
     if not new_access or not new_refresh:
-        try:
-            await redis.delete(key)
-        except RedisError:
-            pass
+        await _end_session(employee_id, "incomplete core-api answer")
         return _expired()
 
-    # 5. Store the rotated refresh token (TTL reset). If it can't be stored, the old
-    #    token is already invalid at Core-API, so this session cannot refresh again.
+    # 8. Store the rotated pair, consume one renewal (atomically) and remember the token we rotated
+    #    away from for a few seconds. If it can't be stored, the old token is already invalid at
+    #    Core-API, so this session cannot refresh again — end it and ask for a real sign-in.
     try:
-        await redis.set(key, new_refresh, ex=settings.REFRESH_TOKEN_EXPIRE_SECONDS)
+        renewals = await session_store.register_renewal(redis, employee_id, refresh_token)
+        await session_store.rotate_session(redis, employee_id, refresh_token, new_refresh)
     except RedisError as e:
         print(f"Redis error while storing rotated token (failing closed): {e}")
+        await _end_session(employee_id, "post-exchange redis failure")
         return _expired()
 
-    # 6. Issue the new cookies with the same flags as /login.
+    if renewals is None or renewals > settings.session_max_renewals:
+        # A simultaneous refresh consumed the last renewal first: the cap is the cap.
+        await _end_session(employee_id, "renewal cap (race)")
+        return _expired()
+
+    # 9. Issue the new cookies with the same flags as /login. The access cookie lives for the whole
+    #    session cap (so the browser still holds it when the token inside expires); the token inside
+    #    keeps its own life and every guarded route still rejects an expired token (Core-API checks).
     response.set_cookie(
         key="access_token",
         value=new_access,
         httponly=True,
         secure=settings.COOKIE_SECURE,
         samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_SECONDS
+        max_age=settings.access_cookie_max_age_seconds
     )
     response.set_cookie(
         key="refresh_token",
@@ -308,41 +423,51 @@ async def logout(
     req: Request,
     db: AsyncSession = Depends(get_db),
     redis = Depends(get_redis),
-    access_token: str | None = Cookie(None)
+    access_token: str | None = Cookie(None),
+    refresh_token: str | None = Cookie(None),
 ):
+    """End the session: drop the server-side records, then clear the cookies.
+
+    **Which session** is decided by the refresh cookie (a `refresh_owner:` lookup) — task 028 changed
+    this from "the `sub` claim of the access cookie", which is not verifiable in WorkDee and let a
+    forged cookie delete somebody else's session. The access cookie's claim is now only a fallback for
+    the audit line, for the case where the refresh cookie is already gone.
+    """
     employee_id = None
     try:
-        if access_token:
-            from jose import jwt
-            # Read the sub claim (not a trust decision) even when the token is expired:
-            # python-jose validates exp by default, so verify_exp must also be disabled.
-            payload = jwt.decode(
-                access_token,
-                settings.SECRET_KEY,
-                algorithms=[settings.ALGORITHM],
-                options={"verify_signature": False, "verify_exp": False}
+        if refresh_token:
+            employee_id = await session_store.owner_of_token(redis, refresh_token)
+    except RedisError as e:
+        print(f"Logout session lookup failed: {e}")
+
+    if employee_id is None:
+        # No refresh cookie we recognise: there is nothing we can prove is ours to revoke. The
+        # cookies are cleared below anyway, so the browser is logged out either way.
+        employee_id = _claim_sub(access_token)
+
+    try:
+        if employee_id:
+            ip_addr = req.client.host if req.client else "127.0.0.1"
+            audit = AuditLog(
+                action="AUTH_LOGOUT",
+                actor_id=employee_id,
+                details=f"ผู้ใช้ {employee_id} ออกจากระบบ",
+                ip_address=ip_addr,
+                metadata_json={}
             )
-            employee_id = payload.get("sub")
-            if employee_id:
-                ip_addr = req.client.host if req.client else "127.0.0.1"
-                audit = AuditLog(
-                    action="AUTH_LOGOUT",
-                    actor_id=employee_id,
-                    details=f"User {employee_id} logged out",
-                    ip_address=ip_addr,
-                    metadata_json={}
-                )
-                db.add(audit)
-                await db.commit()
+            db.add(audit)
+            await db.commit()
     except Exception as e:
         # Prevent any logging failure from blocking the logout cookie clearing
         print(f"Logout audit log error: {e}")
 
     # Revoke the server-side session before clearing cookies. If Redis is unreachable,
     # log it but still clear the cookies — logout must not be blocked by Redis.
+    # Task 028: `end_session` removes the refresh token, the session meta (renewal counter) and the
+    # reverse index together, so nothing of this session survives a logout.
     if employee_id:
         try:
-            await redis.delete(refresh_token_key(employee_id))
+            await session_store.end_session(redis, employee_id)
         except RedisError as e:
             print(f"Logout Redis revoke error: {e}")
 

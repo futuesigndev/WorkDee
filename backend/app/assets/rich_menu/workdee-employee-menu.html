@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  WorkDee — employee Rich Menu (task 025).
+
+  This is the SOURCE for `workdee-employee-menu.png`, which is what actually gets uploaded to LINE.
+  Regenerate with headless Chrome (no dependency is added to the app):
+
+    "C:\Program Files\Google\Chrome\Application\chrome.exe" --headless=new --disable-gpu \
+      --hide-scrollbars --force-device-scale-factor=1 --window-size=2500,1686 \
+      --user-data-dir="<repo>/.scratch/chrome-menu" \
+      --screenshot="backend/app/assets/rich_menu/workdee-employee-menu.png" \
+      "file:///<abs path>/workdee-employee-menu.html"
+
+  `--user-data-dir` matters: when a normal desktop Chrome is already running, the invocation above
+  without it is handed to that instance and **exits without writing the file** (seen on 2026-09-30 while
+  re-rendering for task 030 — the old picture stayed on disk and looked like a successful render).
+
+  The four tile bounds below are EXACTLY the `areas[].bounds` sent to LINE and they mirror
+  `MENU_AREAS` in `backend/app/line_richmenu.py` — change one, change the other, or the picture and
+  the tappable areas stop lining up. 2 × 2 on 2500 × 1686: each tile is 1250 × 843, and the four tiles
+  tile the canvas with no overlap and no gap.
+
+  **All four tiles are live** (task 029 made "ประวัติการลงเวลา" live, task 030 "รอบของฉัน" and task 031
+  "ศูนย์รวมบริการ"): every tile is a `uri` action to a LIFF page and the picture carries **no** "เร็วๆ นี้"
+  tag any more, because nothing in the menu is a placeholder.
+-->
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>WorkDee — employee rich menu (2500 × 1686)</title>
+<style>
+  :root {
+    --primary: #2563eb;          /* the app's own primary (frontend/src/app/globals.css) */
+    --primary-content: #ffffff;
+    --base-100: #ffffff;
+    --base-200: #f8fafc;
+    --base-300: #e2e8f0;
+    --base-content: #0f172a;
+    --muted: #64748b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 2500px; height: 1686px; overflow: hidden;
+    background: var(--base-100);
+    /* A real Thai font, taken from the operating system — no webfont is embedded, so this page must be
+       rendered on a machine that has one of these installed. */
+    font-family: "Leelawadee UI", "Tahoma", "Segoe UI", sans-serif;
+    color: var(--base-content);
+    -webkit-font-smoothing: antialiased;
+  }
+  .cell { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  /* Separators sit exactly on the tile boundaries, so they never look tappable-by-accident. */
+  .cell.live { background: var(--primary); color: var(--primary-content); }
+  /* The three secondary live tiles (029-031). Visually second to "ลงเวลา" on purpose — the solid primary
+     tile stays the main action — but unmistakably tappable: a primary outline, a primary label and its own
+     hint. No grey "เร็วๆ นี้" tile is left (031), so those rules are gone from this file. */
+  .cell.live-alt { background: var(--base-100); color: var(--primary); }
+  .cell.live-alt::after {
+    content: ""; position: absolute; inset: 26px; border: 12px solid var(--primary);
+    border-radius: 30px; pointer-events: none;
+  }
+  .cell.live-alt .label { font-size: 112px; }
+  .cell.live-alt .hint { color: var(--muted); }
+  .r1 { border-bottom: 3px solid var(--base-300); }
+  .c1 { border-right: 3px solid var(--base-300); }
+  .live.r1 { border-bottom-color: #1d4ed8; }
+  .live.c1 { border-right-color: #1d4ed8; }
+
+  .icon { width: 300px; height: 300px; }
+  .icon svg { width: 100%; height: 100%; display: block; }
+  .label { font-size: 132px; font-weight: 700; line-height: 1.1; letter-spacing: 0.5px; }
+  .wordmark { position: absolute; left: 70px; top: 56px; font-size: 62px; font-weight: 700; opacity: 0.85; letter-spacing: 2px; }
+  .hint { margin-top: 44px; font-size: 46px; color: #dbeafe; font-weight: 600; }
+</style>
+</head>
+<body>
+
+  <!-- ลงเวลา — x 0, y 0, w 1250, h 843 — the main live button (uri → LIFF /checkin) -->
+  <div class="cell live r1 c1" style="left:0;top:0;width:1250px;height:843px;">
+    <div class="wordmark">WorkDee</div>
+    <div class="icon">
+      <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="46" cy="54" r="32"></circle>
+        <path d="M46 34v20l14 9"></path>
+        <path d="M74 20l6 6 12-13"></path>
+      </svg>
+    </div>
+    <div class="label">ลงเวลา</div>
+    <div class="hint">แตะเพื่อลงเวลาเข้างาน</div>
+  </div>
+
+  <!-- รอบของฉัน — x 1250, y 0, w 1250, h 843 — live since task 030 (uri → LIFF /rounds) -->
+  <div class="cell live-alt r1" style="left:1250px;top:0;width:1250px;height:843px;">
+    <div class="icon">
+      <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="16" y="14" width="68" height="74" rx="9"></rect>
+        <path d="M32 34h36M32 50h36M32 66h22"></path>
+      </svg>
+    </div>
+    <div class="label">รอบของฉัน</div>
+    <div class="hint">แตะเพื่อดูรอบลงเวลาของคุณ</div>
+  </div>
+
+  <!-- ประวัติการลงเวลา — x 0, y 843, w 1250, h 843 — live since task 029 (uri → LIFF /history) -->
+  <div class="cell live-alt c1" style="left:0;top:843px;width:1250px;height:843px;">
+    <div class="icon">
+      <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 50a30 30 0 1 0 9-21"></path>
+        <path d="M20 22v16h16"></path>
+        <path d="M50 34v18l13 8"></path>
+      </svg>
+    </div>
+    <div class="label">ประวัติการลงเวลา</div>
+    <div class="hint">แตะเพื่อดูประวัติของคุณ</div>
+  </div>
+
+  <!-- ศูนย์รวมบริการ — x 1250, y 843, w 1250, h 843 — live since task 031 (uri → LIFF /portal) -->
+  <div class="cell live-alt" style="left:1250px;top:843px;width:1250px;height:843px;">
+    <div class="icon">
+      <svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="6"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="14" y="14" width="30" height="30" rx="7"></rect>
+        <rect x="56" y="14" width="30" height="30" rx="7"></rect>
+        <rect x="14" y="56" width="30" height="30" rx="7"></rect>
+        <rect x="56" y="56" width="30" height="30" rx="7"></rect>
+      </svg>
+    </div>
+    <div class="label">ศูนย์รวมบริการ</div>
+    <div class="hint">แตะเพื่อดูบริการทั้งหมด</div>
+  </div>
+
+</body>
+</html>
