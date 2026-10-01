@@ -39,6 +39,19 @@ interface Menu {
   order: number;
 }
 
+/**
+ * The server's own Thai sentence from an error body, or `null` when the body carries nothing usable.
+ *
+ * Only a **string** `detail` counts. Three shapes used to break this page (task 052): a plain-text or
+ * bodyless error makes `res.json()` throw (so the request fell into the `catch` and blamed the network —
+ * "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" for a server-side error), and FastAPI's 422 sends `detail` as a **list**,
+ * which `alert()`/`text` would have shown as "[object Object]".
+ */
+function errorDetail(payload: unknown): string | null {
+  const detail = (payload as { detail?: unknown } | null)?.detail
+  return typeof detail === "string" && detail.trim() !== "" ? detail : null
+}
+
 export default function RolesPermissionsPage() {
   const [roles, setRoles] = useState<Role[]>([])
   const [menus, setMenus] = useState<Menu[]>([])
@@ -203,10 +216,11 @@ export default function RolesPermissionsPage() {
       if (res.ok) {
         alert("บันทึกสิทธิ์แล้ว")
       } else {
-        // The server refuses a grant whose child would have no visible group (task 045/D6) — its Thai
-        // message names the parent menu, so it has to be shown rather than swallowed.
+        // The server refuses a grant whose child would have no visible group (task 045/D6) and refuses a
+        // stale menu id (task 052) — both send a Thai `detail` that has to be shown rather than swallowed.
+        // `errorDetail` keeps a plain-text/bodyless/422-list body from producing the wrong message.
         const error = await res.json().catch(() => null)
-        alert(error?.detail || "บันทึกสิทธิ์ไม่สำเร็จ")
+        alert(errorDetail(error) ?? "บันทึกสิทธิ์ไม่สำเร็จ")
       }
     } catch (err) {
       alert(permissionErrorMessage(err, "บันทึกสิทธิ์ไม่สำเร็จ"))
@@ -230,8 +244,12 @@ export default function RolesPermissionsPage() {
         setNewRoleDesc("")
         fetchData()
       } else {
-        const error = await res.json()
-        alert(error.detail || "สร้างบทบาทไม่สำเร็จ")
+        // Task 052: this branch used to call `res.json()` unguarded, so a plain-text or bodyless 500 threw
+        // into the `catch` below and told the admin the server was unreachable. Read the body defensively
+        // and show the server's own sentence when there is one; the network sentence is now only for a
+        // rejected fetch.
+        const error = await res.json().catch(() => null)
+        alert(errorDetail(error) ?? "สร้างบทบาทไม่สำเร็จ")
       }
     } catch (err) {
       alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
@@ -286,7 +304,7 @@ export default function RolesPermissionsPage() {
         setTimeout(() => setNotice({ type: "", text: "" }), 3000)
       } else {
         const error = await res.json().catch(() => null)
-        setEditMessage({ type: "error", text: error?.detail || "บันทึกบทบาทไม่สำเร็จ" })
+        setEditMessage({ type: "error", text: errorDetail(error) ?? "บันทึกบทบาทไม่สำเร็จ" })
       }
     } catch (err) {
       setEditMessage({ type: "error", text: permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้") })
@@ -314,7 +332,7 @@ export default function RolesPermissionsPage() {
         // to send the admin to the catch below — "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" for a server-side error
         // (task 045/D5). A refusal with a JSON `detail` (e.g. the role is in use) is shown as written.
         const error = await res.json().catch(() => null)
-        alert(error?.detail || "ลบบทบาทไม่สำเร็จ")
+        alert(errorDetail(error) ?? "ลบบทบาทไม่สำเร็จ")
       }
     } catch (err) {
       alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))

@@ -110,6 +110,17 @@ async def update_role_permissions(
             select(LocalMenu).where(LocalMenu.id.in_(requested_set))
         )).scalars().all()
         known = {m.id: m for m in rows}
+        # Task 052: an id that is not in `local_menus` can never be granted. Without this check the insert
+        # further down fails on the foreign key and the admin sees a 500 for what is really a stale page
+        # (045 recorded the same behaviour and left it alone). The refusal names the **count** of missing
+        # menus only — never the ids — and it happens before the first write, so the role's existing grants
+        # are left exactly as they were. Duplicated ids count once (the set is distinct).
+        missing_menu_ids = requested_set - known.keys()
+        if missing_menu_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ไม่พบเมนูที่ระบุ {len(missing_menu_ids)} รายการ กรุณารีเฟรชหน้าแล้วลองใหม่",
+            )
         missing_parents: dict[uuid.UUID, LocalMenu] = {}
         for _ in range(10):  # walk up; the seeded tree is two levels deep, the bound is a guard
             additions: list[LocalMenu] = []
