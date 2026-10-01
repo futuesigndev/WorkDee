@@ -99,3 +99,27 @@ export function formatThaiMonth(value: string | null | undefined): string {
     year: "numeric",
   })
 }
+
+const DAY_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: BANGKOK,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+})
+
+/**
+ * A calendar day as the API's date filters want it: `YYYY-MM-DD`, for the **Asia/Bangkok** day that
+ * contains `now` (task 053).
+ *
+ * `new Date().toISOString().slice(0, 10)` — what the Logs page used — is the **UTC** date, so between
+ * 00:00 and 07:00 Bangkok it named *yesterday*, and the page's "last 30 days / today" range was off by a
+ * day for the first seven hours of every Bangkok morning. The day is read out of the zone database (the
+ * same `BANGKOK` constant as the formatters above) rather than shifting the clock by a fixed offset, so
+ * the browser's own zone never enters the answer.
+ */
+export function bangkokDay(offsetDays = 0): string {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000)
+  const parts = DAY_FORMAT.formatToParts(date)
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? ""
+  return `${part("year")}-${part("month")}-${part("day")}`
+}

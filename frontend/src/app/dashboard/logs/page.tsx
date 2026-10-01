@@ -17,7 +17,7 @@ import {
   ArrowUpDown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatThaiDate, formatThaiTime } from '@/lib/datetime'
+import { formatThaiDate, formatThaiTime, bangkokDay } from '@/lib/datetime'
 
 /**
  * An audit timestamp as the instant it really is (task 047 / 046b).
@@ -50,14 +50,12 @@ const formatDuration = (minutes: number) => {
 
 export default function LogsPage() {
   // Date Range Defaults (Last 30 Days)
-  const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 30)
-    return d.toISOString().split('T')[0]
-  })
-  const [dateTo, setDateTo] = useState(() => {
-    return new Date().toISOString().split('T')[0]
-  })
+  //
+  // Task 053: both defaults are **Bangkok** days (`bangkokDay`). They used to be
+  // `new Date().toISOString().split('T')[0]`, i.e. the UTC date — which is yesterday's date for the
+  // first seven hours of every Bangkok day, so the page opened on the wrong day's range each morning.
+  const [dateFrom, setDateFrom] = useState(() => bangkokDay(-30))
+  const [dateTo, setDateTo] = useState(() => bangkokDay())
 
   // Filter States
   const [actorFilter, setActorFilter] = useState("")

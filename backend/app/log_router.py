@@ -4,31 +4,69 @@ from sqlalchemy import select, func, and_, text
 from app.database import get_db
 from app.models import AuditLog, LocalUser
 from app.dependencies import require_permission
-from datetime import datetime, time, timedelta
+from app.photo_storage import BANGKOK_TZ
+from datetime import date, datetime, time, timedelta, timezone
 from collections import defaultdict
 import random
 
 router = APIRouter(tags=["Logs"])
 
+# ─── day boundaries (task 053) ─────────────────────────────────────────────────────────────────────
+# The Logs page asks for calendar dates; the decision is that a "day" there is an **Asia/Bangkok** day.
+# `audit_logs.created_at` is a `timestamp without time zone` written by `datetime.utcnow()`, so the column
+# carries UTC wall-clock: a Bangkok day is therefore
+#     [00:00:00 +07 → the previous UTC day 17:00:00 , next day 00:00:00 +07 → that UTC day 17:00:00)
+# The two instants below are converted into that naive-UTC form **before** they reach the comparison, so
+# nothing about what is stored, the column type or the response changes — only the interpretation of the
+# requested dates (before 053 a date was compared as a UTC day, which is off by up to 7 hours; the time
+# shown in the table was already fixed by 047). `BANGKOK_TZ` is the project's single named zone constant.
+
+
+def bangkok_day_bounds(day: date) -> tuple[datetime, datetime]:
+    """A Bangkok calendar day as naive-UTC `(first instant, last instant)` for the audit column.
+
+    Both ends are inclusive, matching how the filter has always compared (`>= from`, `<= to`): the `to`
+    side is the last microsecond before the next Bangkok midnight (17:00:00 UTC of that UTC day).
+    """
+    start = datetime.combine(day, time.min, tzinfo=BANGKOK_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    next_start = datetime.combine(day + timedelta(days=1), time.min, tzinfo=BANGKOK_TZ)
+    end = next_start.astimezone(timezone.utc).replace(tzinfo=None) - timedelta(microseconds=1)
+    return start, end
+
+
+def bangkok_period(moment: datetime, group_by: str) -> str:
+    """The Bangkok day (`YYYY-MM-DD`) or month (`YYYY-MM`) a stored UTC-naive timestamp belongs to.
+
+    A naive value is read as UTC (that is how it was written), then displayed in Bangkok — so a login at
+    16:59 UTC belongs to the previous Bangkok day, not to the one its UTC date suggests.
+    """
+    local = moment.replace(tzinfo=timezone.utc).astimezone(BANGKOK_TZ)
+    return local.strftime("%Y-%m") if group_by == "month" else local.strftime("%Y-%m-%d")
+
+
 def parse_date_range(date_from_str: str | None, date_to_str: str | None):
+    """The requested range as naive-UTC bounds for `audit_logs.created_at`.
+
+    A plain `YYYY-MM-DD` is a **Bangkok** day (task 053). A value that carries a time (`T` in it) keeps the
+    literal meaning it always had and is passed through unchanged, malformed values are still ignored
+    (no bound at all) instead of answering an error.
+    """
+    def parse_bound(value: str, upper: bool) -> datetime | None:
+        if "T" in value:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        day = datetime.strptime(value, "%Y-%m-%d").date()
+        return bangkok_day_bounds(day)[1 if upper else 0]
+
     dt_from = None
     dt_to = None
     if date_from_str:
         try:
-            if "T" in date_from_str:
-                # Handle ISO format
-                dt_from = datetime.fromisoformat(date_from_str.replace("Z", "+00:00"))
-            else:
-                dt_from = datetime.combine(datetime.strptime(date_from_str, "%Y-%m-%d").date(), time.min)
+            dt_from = parse_bound(date_from_str, upper=False)
         except Exception as e:
             print(f"Error parsing date_from {date_from_str}: {e}")
     if date_to_str:
         try:
-            if "T" in date_to_str:
-                # Handle ISO format
-                dt_to = datetime.fromisoformat(date_to_str.replace("Z", "+00:00"))
-            else:
-                dt_to = datetime.combine(datetime.strptime(date_to_str, "%Y-%m-%d").date(), time.max)
+            dt_to = parse_bound(date_to_str, upper=True)
         except Exception as e:
             print(f"Error parsing date_to {date_to_str}: {e}")
     return dt_from, dt_to
@@ -106,8 +144,8 @@ async def get_logs_summary(
     _current_user = Depends(require_permission("logs"))
 ):
     try:
-        today_start = datetime.combine(datetime.utcnow().date(), time.min)
-        today_end = datetime.combine(datetime.utcnow().date(), time.max)
+        # "Today" on this page means the current **Bangkok** day (task 053), not the UTC day.
+        today_start, today_end = bangkok_day_bounds(datetime.now(BANGKOK_TZ).date())
         
         # 1. Total Logins Today
         stmt_today_logins = select(func.count(AuditLog.id)).where(
@@ -131,9 +169,9 @@ async def get_logs_summary(
         dt_from, dt_to = parse_date_range(date_from, date_to)
         
         if not dt_from:
-            dt_from = datetime.combine((datetime.utcnow() - timedelta(days=30)).date(), time.min)
+            dt_from = bangkok_day_bounds(datetime.now(BANGKOK_TZ).date() - timedelta(days=30))[0]
         if not dt_to:
-            dt_to = datetime.combine(datetime.utcnow().date(), time.max)
+            dt_to = today_end
             
         stmt_period_logins = select(func.count(AuditLog.id)).where(
             AuditLog.action == "AUTH_LOGIN_SUCCESS",
@@ -230,7 +268,7 @@ async def get_logs_sessions(
                             duration_min = 30.0 # Default
                             
                         login_date = active_login_time
-                        period = login_date.strftime("%Y-%m") if group_by == "month" else login_date.strftime("%Y-%m-%d")
+                        period = bangkok_period(login_date, group_by)
                         
                         aggregates[(actor_id, period)]["total_minutes"] += duration_min
                         aggregates[(actor_id, period)]["session_count"] += 1
@@ -244,7 +282,7 @@ async def get_logs_sessions(
                             duration_min = 1.0
                             
                         login_date = active_login_time
-                        period = login_date.strftime("%Y-%m") if group_by == "month" else login_date.strftime("%Y-%m-%d")
+                        period = bangkok_period(login_date, group_by)
                         
                         aggregates[(actor_id, period)]["total_minutes"] += duration_min
                         aggregates[(actor_id, period)]["session_count"] += 1
@@ -260,7 +298,7 @@ async def get_logs_sessions(
                     duration_min = 30.0
                     
                 login_date = active_login_time
-                period = login_date.strftime("%Y-%m") if group_by == "month" else login_date.strftime("%Y-%m-%d")
+                period = bangkok_period(login_date, group_by)
                 
                 aggregates[(actor_id, period)]["total_minutes"] += duration_min
                 aggregates[(actor_id, period)]["session_count"] += 1
