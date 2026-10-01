@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { apiFetch } from "@/lib/api"
 import { isPermissionDenied } from "@/lib/errors"
+import { FLAG_LABEL } from "@/lib/attendance-labels"
 import AccessDenied from "@/components/AccessDenied"
 
 /**
@@ -121,15 +122,6 @@ const LOCATION_LABEL: Record<string, string> = {
 }
 
 /** Every flag code `checkin_logic.py` can produce (verified against that file, not guessed). */
-const FLAG_LABEL: Record<string, string> = {
-  LATE: "สาย",
-  OUT_OF_WINDOW: "นอกช่วงเวลา",
-  OUTSIDE_RADIUS: "นอกพื้นที่",
-  NO_GPS: "ไม่มีตำแหน่ง",
-  LOW_ACCURACY: "ตำแหน่งไม่แม่นยำ",
-  PHOTO_MISSING: "ไม่มีรูป",
-  NO_LOCATION_ASSIGNED: "ไม่ได้กำหนดสถานที่",
-}
 
 const PHOTO_STATUS_LABEL: Record<string, string> = {
   OK: "มีรูป",

@@ -1196,6 +1196,8 @@ RECORDS_PERMISSION = "attendance-records"
 REVIEW_NOTE_MAX = 500
 BULK_REVIEW_MAX = 100
 RANGE_MAX_DAYS = 92                                    # cap for the summary aggregate (and the list)
+# The `by_location` entry for rows that matched no location (task 056). Thai, like every user-visible string.
+LOCATION_UNSPECIFIED_TH = "ไม่ระบุสถานที่"
 REVIEW_STATUS_VALUES = ("ACCEPTED", "REJECTED")
 REVIEWABLE_STATUSES = (logic.REVIEW_PENDING, logic.REVIEW_ACCEPTED, logic.REVIEW_REJECTED)
 NOT_FLAGGED_MESSAGE_TH = "รายการนี้ไม่มีธงที่ต้องตรวจ"
@@ -1424,12 +1426,34 @@ async def checkins_summary(
     ), params)).all()
     by_flag = {flag: count for flag, count in flag_rows if flag is not None}
 
+    # Which location the check-ins were matched to (task 056, for the HR dashboard card). Grouped on the
+    # **snapshot** columns the record carries, never joined back to `attendance_locations`: a location renamed
+    # or deactivated after the check-in must still be reported as the record itself says it was. Rows that
+    # matched no location (GPS missing/outside, `matched_location_id IS NULL`) become one entry with the
+    # placeholder name below, so the counts always add up to `total`. No index backs this column (the survey
+    # 055 noted it); the aggregate runs over one day, which is why that is acceptable here.
+    location_rows = (await db.execute(text(
+        f"SELECT matched_location_id, matched_location_name, count(*) FROM attendance_checkins {where} "
+        f"GROUP BY matched_location_id, matched_location_name "
+        f"ORDER BY count(*) DESC, matched_location_name"
+    ), params)).all()
+    by_location = [
+        {
+            "location_id": str(location_id) if location_id else None,
+            "location_name": (LOCATION_UNSPECIFIED_TH if location_id is None
+                              else (location_name or str(location_id))),
+            "count": count,
+        }
+        for location_id, location_name, count in location_rows
+    ]
+
     return {
         "date_from": since.isoformat() if since else None,
         "date_to": until.isoformat() if until else None,
         "total": sum(by_review.values()),
         "by_review_status": by_review,
         "by_flag": by_flag,
+        "by_location": by_location,
     }
 
 

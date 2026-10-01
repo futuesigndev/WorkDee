@@ -74,6 +74,10 @@ async def seed_data(db: AsyncSession):
         {"key": "menus", "label": "จัดการเมนู", "path": "/dashboard/menus", "icon": "Layers", "order": 3, "parent_id": settings_id},
         {"key": "theme", "label": "ธีมและชื่อระบบ", "path": "/dashboard/settings", "icon": "Palette", "order": 4, "parent_id": settings_id},
         {"key": "logs", "label": "บันทึกการใช้งาน", "path": "/dashboard/logs", "icon": "History", "order": 5, "parent_id": settings_id},
+        # Task 056. The system dashboard that used to live at `/dashboard` moved here, because `/dashboard`
+        # is now the HR attendance dashboard. Order 6 keeps it after the audit log, and the icon name must
+        # exist in the shell's `IconMap` (`dashboard/layout.tsx`) or the sidebar falls back to a plain circle.
+        {"key": "system-overview", "label": "ภาพรวมระบบ", "path": "/dashboard/system-overview", "icon": "Database", "order": 6, "parent_id": settings_id},
         {"key": "line", "label": "ผูกบัญชี LINE", "path": "/dashboard/line", "icon": "MessageSquare", "order": 1, "parent_id": config_app_id},
         {"key": "locations", "label": "สถานที่ทำงาน", "path": "/dashboard/config-app/locations", "icon": "Globe", "order": 2, "parent_id": config_app_id},
         {"key": "attendance-templates", "label": "แม่แบบรอบลงเวลา", "path": "/dashboard/config-app/attendance-templates", "icon": "FileText", "order": 3, "parent_id": config_app_id},
