@@ -41,7 +41,7 @@
 ## 📁 Project Structure
 
 ```
-corp-temp/
+WorkDee/
 ├── backend/                    # FastAPI Application
 │   ├── app/
 │   │   ├── main.py             # App entrypoint, startup, middleware
@@ -143,7 +143,7 @@ git commit -m "Initial commit from FutureSign Master Template"
 ```bash
 # 1. Clone repository
 git clone <your-repo-url>
-cd corp-temp
+cd WorkDee
 
 # 2. ตั้งค่า root .env สำหรับ docker-compose (จำเป็น)
 #    POSTGRES_PASSWORD ไม่มีค่า default — ต้องกำหนดเอง ไม่เช่นนั้น `docker compose up` จะ error ทันที
@@ -168,7 +168,7 @@ docker compose logs -f
 เปิดใช้งาน:
 - Frontend: http://localhost:3019
 - Backend API: http://localhost:8019
-- API Docs: http://localhost:8019/docs
+- API Docs: http://localhost:8019/docs — ค่าตั้งต้นปิดอยู่: ต้องตั้ง `ENABLE_API_DOCS=true` ใน `backend/.env` แล้วรีสตาร์ท backend ก่อน ไม่งั้น `/docs`, `/redoc` และ `/openapi.json` ตอบ 404
 
 ### Option B: Local Development
 
@@ -303,7 +303,7 @@ if binding:
 | [DEPLOY_GUIDE.md](docs/DEPLOY_GUIDE.md) | คู่มือ Deploy ฉบับสมบูรณ์ + Business Logic Guide |
 | [LINE_SETUP_GUIDE.md](docs/LINE_SETUP_GUIDE.md) | ตั้งค่า LINE OA + LIFF + Webhook |
 | [CORE-API_INTEGRATION_GUIDE.md](docs/CORE-API_INTEGRATION_GUIDE.md) | Integration กับ FutureSign Core-API |
-| [Backend API Docs](http://localhost:8019/docs) | Swagger UI (เมื่อรัน backend) |
+| [Backend API Docs](http://localhost:8019/docs) | Swagger UI (ต้องตั้ง `ENABLE_API_DOCS=true` ใน `backend/.env` แล้วรีสตาร์ท backend ก่อน — ค่าตั้งต้นปิดอยู่) |
 
 ---
 
