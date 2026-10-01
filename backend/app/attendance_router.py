@@ -1210,6 +1210,30 @@ BULK_SIZE_MESSAGE_TH = f"เลือกได้ครั้งละ 1 ถึ�
 NOTE_TOO_LONG_MESSAGE_TH = f"เหตุผลยาวเกินกำหนด (ไม่เกิน {REVIEW_NOTE_MAX} ตัวอักษร)"
 RANGE_ORDER_MESSAGE_TH = "ช่วงวันที่ไม่ถูกต้อง: วันที่เริ่มต้องไม่หลังวันที่สิ้นสุด"
 RANGE_TOO_LONG_MESSAGE_TH = f"ช่วงวันที่ต้องไม่เกิน {RANGE_MAX_DAYS} วัน"
+# `location_id=none` is the "ไม่ระบุสถานที่" group (task 061): the check-ins that matched no location.
+# The ids are UUIDs (`models.py:271` `matched_location_id`), so anything else is a bad filter value
+# rather than a filter that matches nothing.
+LOCATION_FILTER_NONE = "none"
+BAD_LOCATION_FILTER_MESSAGE_TH = "ตัวกรองสถานที่ต้องเป็นรหัสสถานที่หรือคำว่า none เท่านั้น"
+
+
+def _parse_location_filter(raw: str | None) -> tuple[uuid.UUID | None, bool]:
+    """`(location_id, matched_none)` from the `location_id` query value.
+
+    Empty/absent means "no filter", the literal `none` means `matched_location_id IS NULL` (the group the
+    056 dashboard shows as "ไม่ระบุสถานที่"), and a UUID selects that location. Anything else is refused with
+    a Thai 422 — the style `_validate_range` already uses for a bad parameter — because a malformed value
+    would otherwise reach asyncpg and come back as a 500.
+    """
+    if raw is None or not raw.strip():
+        return None, False
+    value = raw.strip()
+    if value.lower() == LOCATION_FILTER_NONE:
+        return None, True
+    try:
+        return uuid.UUID(value), False
+    except ValueError:
+        raise HTTPException(status_code=422, detail=BAD_LOCATION_FILTER_MESSAGE_TH) from None
 
 
 def _like_pattern(value: str) -> str:
@@ -1239,6 +1263,8 @@ def _record_conditions(
     review_statuses: Iterable[str] | None = None,
     time_status: str | None = None,
     location_status: str | None = None,
+    location_id: uuid.UUID | None = None,
+    location_none: bool = False,
 ):
     """The WHERE clauses shared by the records list, its count and the CSV export (task 024).
 
@@ -1272,6 +1298,13 @@ def _record_conditions(
         conditions.append(AttendanceCheckin.time_status == time_status)
     if location_status:
         conditions.append(AttendanceCheckin.location_status == location_status)
+    # Task 061. `location_none` and `location_id` are exclusive by construction: `_parse_location_filter`
+    # never returns both. The snapshot column is filtered, never `attendance_locations` — a record from a
+    # since-deleted location must still be findable by the id/name it was stored with.
+    if location_none:
+        conditions.append(AttendanceCheckin.matched_location_id.is_(None))
+    elif location_id is not None:
+        conditions.append(AttendanceCheckin.matched_location_id == location_id)
     return conditions
 
 
@@ -1288,6 +1321,8 @@ def _records_select(
     review_statuses: Iterable[str] | None = None,
     time_status: str | None = None,
     location_status: str | None = None,
+    location_id: uuid.UUID | None = None,
+    location_none: bool = False,
 ):
     """(rows statement, count statement) for the same filters.
 
@@ -1310,6 +1345,8 @@ def _records_select(
         review_statuses=review_statuses,
         time_status=time_status,
         location_status=location_status,
+        location_id=location_id,
+        location_none=location_none,
     )
 
     rows_stmt = select(
@@ -1347,6 +1384,7 @@ async def list_checkins(
     review_status: str | None = Query(None),
     time_status: str | None = Query(None),
     location_status: str | None = Query(None),
+    location_id: str | None = Query(None, description="location UUID, or `none` for records that matched no location"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -1356,8 +1394,11 @@ async def list_checkins(
 
     No LINE user id and no token is ever part of an answer — the table does not even store them.
     Filters that do not match a known code (`flag`, `review_status`, `time_status`, `location_status`)
-    simply match nothing; the page only ever sends values from its own dropdowns.
+    simply match nothing; the page only ever sends values from its own dropdowns. `location_id` is the
+    one exception: a value that is neither a UUID nor `none` is a Thai 422 (task 061), because it would
+    otherwise reach asyncpg as a malformed UUID. An id that simply has no rows is not an error.
     """
+    parsed_location, location_none = _parse_location_filter(location_id)
     rows_stmt, count_stmt = _records_select(
         date_from=date_from,
         date_to=date_to,
@@ -1368,6 +1409,8 @@ async def list_checkins(
         review_status=review_status,
         time_status=time_status,
         location_status=location_status,
+        location_id=parsed_location,
+        location_none=location_none,
     )
     total = (await db.execute(count_stmt)).scalar() or 0
     rows = (await db.execute(
@@ -1387,6 +1430,7 @@ async def list_checkins(
 async def checkins_summary(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    location_id: str | None = Query(None, description="location UUID, or `none` for records that matched no location"),
     db: AsyncSession = Depends(get_db),
     _current_user=Depends(require_permission(RECORDS_PERMISSION)),
 ):
@@ -1395,8 +1439,15 @@ async def checkins_summary(
     The counts use exactly the same date predicate as the list, so the chips and the table can never
     disagree — but note the one difference: with **no** dates given the summary assumes today, while
     the list has no date filter at all. The page always sends its own range, so this never shows up.
+
+    Task 061: the records page sends **its whole query string** to this endpoint, so `location_id` is
+    honoured here too — otherwise the chips above a location-filtered table would count rows the table
+    is not showing. The other filters (`q`, `flag`, `review_status`, `time_status`, `location_status`)
+    are deliberately still ignored: the page's chips are review-status chips and the summary's
+    `by_review_status` is what they render, while a chip count narrowed by a flag would be misleading.
     """
     _validate_range(date_from, date_to)
+    parsed_location, location_none = _parse_location_filter(location_id)
     since, until = date_from, date_to
     if since is None and until is None:
         since = until = logic.bangkok_now().date()
@@ -1409,6 +1460,11 @@ async def checkins_summary(
     if until is not None:
         conditions.append("work_date <= :until")
         params["until"] = until
+    if location_none:
+        conditions.append("matched_location_id IS NULL")
+    elif parsed_location is not None:
+        conditions.append("matched_location_id = :location_id")
+        params["location_id"] = parsed_location
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     review_rows = (await db.execute(text(
@@ -1484,6 +1540,8 @@ def _daily_export_select(
     date_to: date,
     employee_id: str | None = None,
     q: str | None = None,
+    location_id: uuid.UUID | None = None,
+    location_none: bool = False,
 ):
     """One row per employee per day, aggregated in the database (the file can be long).
 
@@ -1496,6 +1554,8 @@ def _daily_export_select(
         employee_id=employee_id,
         q=q,
         review_statuses=statuses,
+        location_id=location_id,
+        location_none=location_none,
     )
     return (
         select(
@@ -1535,6 +1595,8 @@ async def _csv_stream(
     actor_id: str,
     include_pending: bool,
     include_rejected: bool,
+    location_id: uuid.UUID | None = None,
+    location_none: bool = False,
 ):
     """The response body, produced row by row.
 
@@ -1553,6 +1615,7 @@ async def _csv_stream(
     if kind == "daily":
         result = await db.stream(_daily_export_select(
             statuses=statuses, date_from=date_from, date_to=date_to, employee_id=employee_id, q=q,
+            location_id=location_id, location_none=location_none,
         ))
         async for aggregate in result:
             produced += 1
@@ -1562,6 +1625,7 @@ async def _csv_stream(
     else:
         rows_stmt, _ = _records_select(
             date_from=date_from, date_to=date_to, employee_id=employee_id, q=q, review_statuses=statuses,
+            location_id=location_id, location_none=location_none,
         )
         result = await db.stream(rows_stmt.order_by(
             AttendanceCheckin.work_date,
@@ -1593,6 +1657,11 @@ async def _csv_stream(
             # Which filters narrowed the file, never the values themselves (no employee id in an audit row).
             "filtered_by_employee": bool(employee_id),
             "filtered_by_search": bool(q),
+            # Task 061: the location filter, recorded the same way — a boolean for "a location filter was on"
+            # plus which one, so a file can be explained afterwards without guessing. The id is a location,
+            # not a person, so it is safe to name (the search text and the employee id are not).
+            "filtered_by_location": bool(location_id is not None or location_none),
+            "location_id": LOCATION_FILTER_NONE if location_none else (str(location_id) if location_id else None),
         },
     ))
     # Committed here rather than left to the request's teardown: the audit row is the record of a
@@ -1610,6 +1679,7 @@ async def export_checkins(
     include_rejected: bool = Query(False),
     employee_id: str | None = Query(None),
     q: str | None = Query(None, max_length=120),
+    location_id: str | None = Query(None, description="location UUID, or `none` for records that matched no location"),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_permission(RECORDS_PERMISSION)),
 ):
@@ -1618,13 +1688,15 @@ async def export_checkins(
     Registered **before** `/checkins/{checkin_id}` on purpose: FastAPI matches routes in registration
     order, and `export` is not a UUID. The file carries no coordinates, no photo key and no LINE user
     id — only what payroll needs. `date_from`/`date_to` are required, and both the 92-day cap and the
-    from-≤-to rule are the ones the list already enforces.
+    from-≤-to rule are the ones the list already enforces. Task 061 added `location_id` so the file
+    holds exactly the rows the filtered table shows.
     """
     if kind not in attendance_csv.EXPORT_KINDS:
         raise HTTPException(status_code=422, detail=EXPORT_KIND_MESSAGE_TH)
     if date_from is None or date_to is None:
         raise HTTPException(status_code=422, detail=EXPORT_RANGE_REQUIRED_MESSAGE_TH)
     _validate_range(date_from, date_to)
+    parsed_location, location_none = _parse_location_filter(location_id)
 
     statuses = list(EXPORT_COUNTED_STATUSES)
     if include_pending:
@@ -1636,6 +1708,7 @@ async def export_checkins(
     # For `kind=daily` this is the detail-row count, which is an upper bound on the grouped rows.
     _, count_stmt = _records_select(
         date_from=date_from, date_to=date_to, employee_id=employee_id, q=q, review_statuses=statuses,
+        location_id=parsed_location, location_none=location_none,
     )
     total = (await db.execute(count_stmt)).scalar() or 0
     if total > attendance_csv.EXPORT_MAX_ROWS:
@@ -1654,6 +1727,8 @@ async def export_checkins(
             actor_id=current_user.employee_id,
             include_pending=include_pending,
             include_rejected=include_rejected,
+            location_id=parsed_location,
+            location_none=location_none,
         ),
         media_type="text/csv; charset=utf-8",
         headers={
@@ -1662,6 +1737,134 @@ async def export_checkins(
             "Cache-Control": "private, no-store",
         },
     )
+
+
+@router.get("/checkins/locations")
+async def checkin_locations(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _current_user=Depends(require_permission(RECORDS_PERMISSION)),
+):
+    """The location choices for the records filter (task 061).
+
+    Guarded by `attendance-records`, **not** `locations`: filling the filter only needs the right to read
+    records. Registered before `/checkins/{checkin_id}` — `locations` is not a UUID, and FastAPI matches
+    routes in registration order. The pairs come from the check-ins' own **snapshot** columns, so a location
+    deleted from `attendance_locations` still shows up while records reference it, and an id that was renamed
+    over time reports its **latest** snapshot name. `date_from`/`date_to` merely narrow which check-ins are
+    inspected. An id whose stored name is NULL falls back to the id; the rows that matched no location become
+    one entry carrying `LOCATION_UNSPECIFIED_TH` (`location_id: null`), listed last — the same grouping the
+    056 dashboard uses.
+    """
+    _validate_range(date_from, date_to)
+    conditions = []
+    params: dict[str, Any] = {}
+    if date_from is not None:
+        conditions.append("work_date >= :date_from")
+        params["date_from"] = date_from
+    if date_to is not None:
+        conditions.append("work_date <= :date_to")
+        params["date_to"] = date_to
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    rows = (await db.execute(text(
+        f"SELECT location_id, location_name FROM ("
+        f"  SELECT DISTINCT ON (matched_location_id) matched_location_id AS location_id,"
+        f"         matched_location_name AS location_name, checked_at"
+        f"  FROM attendance_checkins {where}"
+        f"  ORDER BY matched_location_id, checked_at DESC"
+        f") AS latest ORDER BY location_name, location_id"
+    ), params)).all()
+
+    items: list[dict[str, Any]] = []
+    unspecified: dict[str, Any] | None = None
+    for location_id, location_name in rows:
+        if location_id is None:
+            unspecified = {"location_id": None, "location_name": LOCATION_UNSPECIFIED_TH}
+        else:
+            items.append({
+                "location_id": str(location_id),
+                "location_name": location_name or str(location_id),
+            })
+    if unspecified is not None:
+        items.append(unspecified)
+    return {"items": items}
+
+
+# Every review status a flag entry reports, always present (zeros included) so the client never invents one.
+FLAG_OUTCOME_STATUSES = (logic.REVIEW_CLEAN, logic.REVIEW_PENDING,
+                         logic.REVIEW_ACCEPTED, logic.REVIEW_REJECTED)
+
+
+@router.get("/checkins/flag-outcomes")
+async def checkin_flag_outcomes(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    location_id: str | None = Query(None, description="location UUID, or `none` for records that matched no location"),
+    db: AsyncSession = Depends(get_db),
+    _current_user=Depends(require_permission(RECORDS_PERMISSION)),
+):
+    """Flag × review-outcome counts for the HR report (task 061, round 1 item (c)).
+
+    Aggregated entirely in PostgreSQL: `jsonb_array_elements_text` fans the flags out through a lateral join and
+    no check-in row ever reaches Python (the habit the CSV export already follows). One row carrying two flags
+    counts once in **each** of its flag entries, so the entries can add up to more than `flagged_checkins` — the
+    page says so in words. `total_checkins` counts every row in range (unflagged included), `flagged_checkins`
+    only the rows with at least one flag; `by_flag` is ordered by `total` desc then code, and each entry always
+    carries all four review statuses. Range rules are the export's: Bangkok `work_date`, the default range is
+    today, and the 92-day cap / inverted range are refused with the same Thai 422. Unflagged rows appear in no
+    entry, and a flag code this build does not know is still reported under its own code.
+    """
+    _validate_range(date_from, date_to)
+    parsed_location, location_none = _parse_location_filter(location_id)
+    since, until = date_from, date_to
+    if since is None and until is None:
+        since = until = logic.bangkok_now().date()
+
+    conditions = []
+    params: dict[str, Any] = {}
+    if since is not None:
+        conditions.append("work_date >= :since")
+        params["since"] = since
+    if until is not None:
+        conditions.append("work_date <= :until")
+        params["until"] = until
+    if location_none:
+        conditions.append("matched_location_id IS NULL")
+    elif parsed_location is not None:
+        conditions.append("matched_location_id = :location_id")
+        params["location_id"] = parsed_location
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    flagged_where = f"WHERE {' AND '.join([*conditions, 'jsonb_array_length(flags) > 0'])}"
+
+    total = (await db.execute(text(f"SELECT count(*) FROM attendance_checkins {where}"), params)).scalar() or 0
+    flagged = (await db.execute(
+        text(f"SELECT count(*) FROM attendance_checkins {flagged_where}"), params)).scalar() or 0
+    rows = (await db.execute(text(
+        f"SELECT flag, review_status, count(*) FROM attendance_checkins "
+        f"LEFT JOIN LATERAL jsonb_array_elements_text(flags) AS flag ON TRUE {where} "
+        f"GROUP BY flag, review_status"
+    ), params)).all()
+
+    grouped: dict[str, dict[str, int]] = {}
+    for flag, review_status, count in rows:
+        if flag is None:                       # the `LEFT JOIN` row of an unflagged check-in
+            continue
+        entry = grouped.setdefault(flag, {status: 0 for status in FLAG_OUTCOME_STATUSES})
+        entry[review_status] = entry.get(review_status, 0) + count
+
+    by_flag = [
+        {"flag": flag, "total": sum(counts.values()), "by_review_status": counts}
+        for flag, counts in sorted(grouped.items(), key=lambda item: (-sum(item[1].values()), item[0]))
+    ]
+    return {
+        "date_from": since.isoformat() if since else None,
+        "date_to": until.isoformat() if until else None,
+        "total_checkins": total,
+        "flagged_checkins": flagged,
+        "by_flag": by_flag,
+    }
 
 
 @router.get("/checkins/{checkin_id}")

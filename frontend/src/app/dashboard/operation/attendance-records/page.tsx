@@ -89,6 +89,14 @@ interface Filters {
   timeStatus: string
   locationStatus: string
   reviewStatus: string
+  /** Task 061: "" = every location, "none" = records that matched no location, otherwise a location id. */
+  locationId: string
+}
+
+/** One choice of the location filter. `location_id: null` is the API's "ไม่ระบุสถานที่" group. */
+interface LocationOption {
+  location_id: string | null
+  location_name: string
 }
 
 // ─── Thai wording (codes come from the API and never change; only these labels do) ─────────────
@@ -224,9 +232,16 @@ export default function AttendanceRecordsPage() {
     timeStatus: "",
     locationStatus: "",
     reviewStatus: "",
+    locationId: "",
   })
   const [searchInput, setSearchInput] = useState("")
   const [flaggedOnly, setFlaggedOnly] = useState(false)
+  // Location filter (task 061). The choices come from the check-ins themselves
+  // (`GET /attendance/checkins/locations`), not from `attendance_locations`, because a record may name a
+  // location that has since been deleted — and it is `attendance-records`, not `locations`, that guards it,
+  // so a records reader can fill the dropdown without being given the settings menu.
+  const [locationOptions, setLocationOptions] = useState<LocationOption[]>([])
+  const [locationOptionsFailed, setLocationOptionsFailed] = useState(false)
   // The two date boxes are plain text so they can show Thai Buddhist-Era dates; these hold what the
   // user is typing and only ever move the query when the text parses (see thaiDateToIso).
   const [fromText, setFromText] = useState(() => isoToThaiDate(today))
@@ -280,6 +295,7 @@ export default function AttendanceRecordsPage() {
       if (filters.locationStatus) params.set("location_status", filters.locationStatus)
       if (filters.reviewStatus) params.set("review_status", filters.reviewStatus)
       if (filters.flag) params.set("flag", filters.flag)
+      if (filters.locationId) params.set("location_id", filters.locationId)
       if (flaggedOnly) params.set("has_flags", "true")
       for (const [key, value] of Object.entries(extra)) params.set(key, value)
       return params.toString()
@@ -339,6 +355,38 @@ export default function AttendanceRecordsPage() {
     }
   }, [])
 
+  // The location dropdown's choices (task 061), fetched once **without** a date range: the filter must
+  // offer every location the records mention, not only the ones inside the range on screen — a choice that
+  // disappears as HR narrows the range is a trap. A failure only leaves the dropdown at "ทุกสถานที่"
+  // (`locationOptionsFailed` shows a small note): the table, the chips and the export keep working.
+  useEffect(() => {
+    let cancelled = false
+    const handle = setTimeout(async () => {
+      try {
+        const res = await apiFetch("/api/v1/attendance/checkins/locations")
+        if (!res.ok) {
+          if (!cancelled) setLocationOptionsFailed(true)
+          return
+        }
+        const data = await res.json()
+        if (!cancelled) {
+          setLocationOptions(Array.isArray(data.items) ? data.items : [])
+          setLocationOptionsFailed(false)
+        }
+      } catch (error) {
+        if (isPermissionDenied(error as Error)) {
+          setAccessDenied(true)
+          return
+        }
+        if (!cancelled) setLocationOptionsFailed(true)
+      }
+    }, 0)
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
+  }, [])
+
   // The pending count for the export dialog's range. Debounced and cancelled like `load`, and every
   // state update happens inside a timer callback (never synchronously in the effect) — the same shape
   // the rest of this page uses.
@@ -364,7 +412,12 @@ export default function AttendanceRecordsPage() {
       // to a range that is fine now — the same stale-message lesson as the table's banner.
       setExportMessage("")
       try {
-        const res = await apiFetch(`/api/v1/attendance/checkins/summary?date_from=${from}&date_to=${to}`)
+        const locationQuery = filters.locationId
+          ? `&location_id=${encodeURIComponent(filters.locationId)}`
+          : ""
+        const res = await apiFetch(
+          `/api/v1/attendance/checkins/summary?date_from=${from}&date_to=${to}${locationQuery}`,
+        )
         if (!res.ok) {
           if (!cancelled) setRangeCountsFailed(true)
           return
@@ -385,7 +438,7 @@ export default function AttendanceRecordsPage() {
       cancelled = true
       clearTimeout(handle)
     }
-  }, [exportOpen, exportFrom, exportTo])
+  }, [exportOpen, exportFrom, exportTo, filters.locationId])
 
   /** Fetch the open record's photo as bytes and hand the <img> an object URL.
    *
@@ -551,6 +604,9 @@ export default function AttendanceRecordsPage() {
         include_pending: String(exportPending),
         include_rejected: String(exportRejected),
       })
+      // Task 061: the file must hold exactly the rows the filtered table shows, so the toolbar's location
+      // filter travels with the export (the dialog's own date range stays independent, as before).
+      if (filters.locationId) params.set("location_id", filters.locationId)
       const response = await apiFetch(`/api/v1/attendance/checkins/export?${params.toString()}`)
       if (!response.ok) {
         const body = await response.json().catch(() => null)
@@ -588,6 +644,15 @@ export default function AttendanceRecordsPage() {
   const selectableOnPage = pendingOnPage.map((row) => row.id)
   const allSelected = selectableOnPage.length > 0 && selectableOnPage.every((id) => selected.includes(id))
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
+
+  /** The location filter as the export dialog names it, so the dialog and the toolbar can never disagree
+   *  about what the downloaded file will contain. */
+  const locationFilterLabel = (() => {
+    if (!filters.locationId) return "ทุกสถานที่"
+    const option = locationOptions.find((item) => (item.location_id ?? "none") === filters.locationId)
+    if (option) return option.location_name
+    return filters.locationId === "none" ? "ไม่ระบุสถานที่" : filters.locationId
+  })()
 
   /** How many *hidden* advanced filters are narrowing the list — shown on the toggle button. */
   const activeFilterCount = [
@@ -767,6 +832,27 @@ export default function AttendanceRecordsPage() {
             >
               วันนี้
             </button>
+            <label className="flex flex-col items-start gap-1 text-xs font-black text-base-content/60">
+              สถานที่
+              <select
+                value={filters.locationId}
+                onChange={(event) => {
+                  setFilters((current) => ({ ...current, locationId: event.target.value }))
+                  setPage(1)
+                }}
+                className="w-full sm:w-52 bg-base-100 border border-base-300/60 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none cursor-pointer"
+              >
+                <option value="">ทุกสถานที่</option>
+                {locationOptions.map((option) => (
+                  <option key={option.location_id ?? "none"} value={option.location_id ?? "none"}>
+                    {option.location_name}
+                  </option>
+                ))}
+              </select>
+              {locationOptionsFailed && (
+                <span className="text-[10px] font-bold text-warning">โหลดรายชื่อสถานที่ไม่สำเร็จ</span>
+              )}
+            </label>
             <button
               onClick={() => {
                 setExportOpen(true)
@@ -1358,6 +1444,14 @@ export default function AttendanceRecordsPage() {
                     />
                   </label>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-black text-base-content/60">สถานที่</p>
+                <p className="text-xs font-bold text-base-content/80">{locationFilterLabel}</p>
+                <p className="text-[11px] text-base-content/50">
+                  ไฟล์จะใช้ตัวกรองสถานที่เดียวกับตาราง — เปลี่ยนได้ที่แถบตัวกรองด้านบน
+                </p>
               </div>
 
               <div className="space-y-2">
