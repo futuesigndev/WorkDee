@@ -18,6 +18,23 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatThaiDate, formatThaiTime } from '@/lib/datetime'
+
+/**
+ * An audit timestamp as the instant it really is (task 047 / 046b).
+ *
+ * `audit_logs.created_at` is a `timestamp without time zone` written by `datetime.utcnow`, so the API
+ * serialises it **without an offset** — and `new Date("2026-09-29T08:56:42")` reads a string without
+ * an offset as *local* time. The page therefore printed the UTC clock: the phone check-in of
+ * 2026-09-29 15:56 Bangkok showed as 08:56. Marking the value as UTC restores it (measured against
+ * `attendance_checkins.checked_at`, which is a real timestamptz for the very same event). A value that
+ * already carries `Z` or an offset is passed through untouched, so this cannot shift anything else.
+ */
+function auditInstant(value: string | null | undefined): string | null {
+  if (!value) return null
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return value
+  // Python writes microseconds (6 fraction digits); Date only guarantees 3, so trim the rest.
+  return `${value.replace(/(\.\d{3})\d+$/, "$1")}Z`
+}
 import { API_URL, apiFetch } from '@/lib/api'
 import { isPermissionDenied } from '@/lib/errors'
 import AccessDenied from '@/components/AccessDenied'
@@ -557,8 +574,8 @@ export default function LogsPage() {
                 sortedLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-base-200/20 transition-colors">
                     <td className="px-6 py-4 font-mono text-[10px] text-base-content/60">
-                      {formatThaiDate(log.created_at)}<br/>
-                      {formatThaiTime(log.created_at)}
+                      {formatThaiDate(auditInstant(log.created_at))}<br/>
+                      {formatThaiTime(auditInstant(log.created_at))}
                     </td>
                     <td className="px-6 py-4">
                       <span className={cn("px-2 py-0.5 rounded text-[9px] font-black font-mono", getActionColor(log.action))}>

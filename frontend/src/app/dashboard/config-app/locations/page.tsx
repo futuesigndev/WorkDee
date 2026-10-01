@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle2, Loader2, MapPin, Pencil, Plus, Search, X } f
 import { API_URL, apiFetch } from "@/lib/api"
 import { isPermissionDenied } from "@/lib/errors"
 import AccessDenied from "@/components/AccessDenied"
+import FieldError from "@/components/FieldError"
 
 // ─── Types & helpers ─────────────────────────────────────────────────────────
 
@@ -96,6 +97,51 @@ function apiErrorMessage(payload: unknown, fallback: string): string {
   return fallback
 }
 
+/**
+ * A number typed into one of the three numeric fields, or `null` when the text is not one.
+ *
+ * A comma is accepted as the decimal separator (task 047/D16). Google Maps shows Thai coordinates as
+ * `13,7563, 100,5018`, and a `type="number"` input silently *drops* the comma — `13,7563` becomes the
+ * valid-looking but wrong `137563`. This is why the two coordinate inputs are plain text inputs now.
+ */
+function parseCoordinate(value: string): number | null {
+  const normalised = value.trim().replace(",", ".")
+  if (!normalised) return null
+  const parsed = Number(normalised)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/** Per-field Thai messages for the numeric inputs — the shape `FieldError` renders (task 027's idiom). */
+type LocationFieldErrors = { latitude?: string; longitude?: string; radius_meters?: string }
+
+/**
+ * Why latitude `999` used to produce **no request and no message at all** (the 044 defect D16): the
+ * form relied on the browser's own constraint checking (`type="number"` together with `min`/`max`), so
+ * an out-of-range value made the input `:invalid` and the submit event never fired — the Thai checks
+ * below were never reached, and the only feedback was the browser's own transient bubble. The form is
+ * `noValidate` now and the page answers every case itself, next to the field.
+ */
+function validateFields(form: LocationForm): LocationFieldErrors {
+  const errors: LocationFieldErrors = {}
+
+  const latitude = parseCoordinate(form.latitude)
+  if (!form.latitude.trim()) errors.latitude = "กรุณากรอกละติจูด"
+  else if (latitude === null) errors.latitude = "ละติจูดต้องเป็นตัวเลข"
+  else if (latitude < -90 || latitude > 90) errors.latitude = "ละติจูดต้องอยู่ระหว่าง -90 ถึง 90"
+
+  const longitude = parseCoordinate(form.longitude)
+  if (!form.longitude.trim()) errors.longitude = "กรุณากรอกลองจิจูด"
+  else if (longitude === null) errors.longitude = "ลองจิจูดต้องเป็นตัวเลข"
+  else if (longitude < -180 || longitude > 180) errors.longitude = "ลองจิจูดต้องอยู่ระหว่าง -180 ถึง 180"
+
+  const radius = parseCoordinate(form.radius_meters)
+  if (!form.radius_meters.trim()) errors.radius_meters = "กรุณากรอกรัศมี"
+  else if (radius === null || !Number.isInteger(radius)) errors.radius_meters = "รัศมีต้องเป็นจำนวนเต็ม"
+  else if (radius < 10 || radius > 1000) errors.radius_meters = "รัศมีต้องอยู่ระหว่าง 10 ถึง 1000 เมตร"
+
+  return errors
+}
+
 /** Mirrors the server-side limits so the admin sees the problem before the request. */
 function validate(form: LocationForm): string | null {
   const code = form.code.trim()
@@ -105,16 +151,7 @@ function validate(form: LocationForm): string | null {
   if (!name) return "กรุณากรอกชื่อสถานที่"
   if (name.length > 120) return "ชื่อสถานที่ต้องไม่เกิน 120 ตัวอักษร"
   if (form.address.trim().length > 300) return "ที่อยู่ต้องไม่เกิน 300 ตัวอักษร"
-  if (!form.latitude.trim() || Number.isNaN(Number(form.latitude))) return "ละติจูดต้องเป็นตัวเลข"
-  if (!form.longitude.trim() || Number.isNaN(Number(form.longitude))) return "ลองจิจูดต้องเป็นตัวเลข"
-  const latitude = Number(form.latitude)
-  const longitude = Number(form.longitude)
-  if (latitude < -90 || latitude > 90) return "ละติจูดต้องอยู่ระหว่าง -90 ถึง 90"
-  if (longitude < -180 || longitude > 180) return "ลองจิจูดต้องอยู่ระหว่าง -180 ถึง 180"
-  const radius = Number(form.radius_meters)
-  if (!Number.isInteger(radius) || radius < 10 || radius > 1000) {
-    return "รัศมีต้องเป็นจำนวนเต็มระหว่าง 10 ถึง 1000 เมตร"
-  }
+  // lat/long/radius are checked by `validateFields` so each message appears next to its own field.
   return null
 }
 
@@ -133,6 +170,7 @@ export default function LocationsPage() {
   const [editing, setEditing] = useState<AttendanceLocation | null>(null)
   const [form, setForm] = useState<LocationForm>(EMPTY_FORM)
   const [formError, setFormError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<LocationFieldErrors>({})
   const [saving, setSaving] = useState(false)
 
   const [confirmRow, setConfirmRow] = useState<AttendanceLocation | null>(null)
@@ -181,6 +219,7 @@ export default function LocationsPage() {
     setEditing(null)
     setForm(EMPTY_FORM)
     setFormError("")
+    setFieldErrors({})
     setShowModal(true)
   }
 
@@ -196,6 +235,7 @@ export default function LocationsPage() {
       is_active: row.is_active,
     })
     setFormError("")
+    setFieldErrors({})
     setShowModal(true)
   }
 
@@ -203,19 +243,23 @@ export default function LocationsPage() {
     e.preventDefault()
     if (saving) return
     const problem = validate(form)
-    if (problem) {
-      setFormError(problem)
+    const fieldProblems = validateFields(form)
+    if (problem || Object.keys(fieldProblems).length > 0) {
+      setFormError(problem ?? "")
+      setFieldErrors(fieldProblems)
       return
     }
     setSaving(true)
     setFormError("")
+    setFieldErrors({})
     const body = {
       code: form.code.trim(),
       name: form.name.trim(),
       address: form.address.trim() === "" ? null : form.address.trim(),
-      latitude: Number(form.latitude),
-      longitude: Number(form.longitude),
-      radius_meters: Number(form.radius_meters),
+      // `parseCoordinate` (not `Number`) so a comma decimal separator arrives as a real number.
+      latitude: parseCoordinate(form.latitude),
+      longitude: parseCoordinate(form.longitude),
+      radius_meters: parseCoordinate(form.radius_meters),
       is_active: form.is_active,
     }
     try {
@@ -407,6 +451,7 @@ export default function LocationsPage() {
                         <button
                           onClick={() => openEdit(row)}
                           title="แก้ไขสถานที่ทำงาน"
+                          aria-label={`แก้ไขสถานที่ทำงาน ${row.name}`}
                           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-primary/10 hover:text-primary text-base-content/40 transition-all cursor-pointer"
                         >
                           <Pencil size={15} />
@@ -414,6 +459,7 @@ export default function LocationsPage() {
                         <button
                           onClick={() => setConfirmRow(row)}
                           title={row.is_active ? "ปิดใช้งานสถานที่ทำงาน" : "เปิดใช้งานสถานที่ทำงาน"}
+                          aria-label={row.is_active ? `ปิดใช้งานสถานที่ทำงาน ${row.name}` : `เปิดใช้งานสถานที่ทำงาน ${row.name}`}
                           className={
                             row.is_active
                               ? "w-8 h-8 flex items-center justify-center rounded-lg hover:bg-error/10 hover:text-error text-base-content/40 transition-all cursor-pointer"
@@ -482,7 +528,7 @@ export default function LocationsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            <form onSubmit={handleSave} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               {formError && (
                 <div className="flex items-start gap-2 px-4 py-3 rounded-xl border bg-base-200 border-base-300 text-base-content">
                   <AlertCircle size={16} className="text-error shrink-0 mt-0.5" />
@@ -536,32 +582,36 @@ export default function LocationsPage() {
                     ละติจูด *
                   </label>
                   <input
-                    type="number"
-                    step="0.000001"
-                    min={-90}
-                    max={90}
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={form.latitude}
-                    onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, latitude: e.target.value })
+                      setFieldErrors((previous) => ({ ...previous, latitude: undefined }))
+                    }}
                     placeholder="13.7563"
                     className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-mono"
                   />
+                  <FieldError message={fieldErrors.latitude} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-widest text-base-content/40">
                     ลองจิจูด *
                   </label>
                   <input
-                    type="number"
-                    step="0.000001"
-                    min={-180}
-                    max={180}
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={form.longitude}
-                    onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, longitude: e.target.value })
+                      setFieldErrors((previous) => ({ ...previous, longitude: undefined }))
+                    }}
                     placeholder="100.5018"
                     className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-mono"
                   />
+                  <FieldError message={fieldErrors.longitude} />
                 </div>
               </div>
 
@@ -571,13 +621,15 @@ export default function LocationsPage() {
                 </label>
                 <input
                   type="number"
-                  min={10}
-                  max={1000}
                   required
                   value={form.radius_meters}
-                  onChange={(e) => setForm({ ...form, radius_meters: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, radius_meters: e.target.value })
+                    setFieldErrors((previous) => ({ ...previous, radius_meters: undefined }))
+                  }}
                   className="w-full bg-base-200/60 border-none rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-mono"
                 />
+                <FieldError message={fieldErrors.radius_meters} />
                 <p className="text-[11px] text-base-content/50 ml-1">แนะนำ 100–150 เมตร</p>
               </div>
 

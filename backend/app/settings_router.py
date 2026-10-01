@@ -74,6 +74,26 @@ def _write_audit(db: AsyncSession, actor_id: str, changed: list[str], req: Reque
     ))
 
 
+# Fields an admin may legitimately leave blank. A browser posts an empty input as `""` while the
+# column holds NULL, so comparing the raw values used to turn NULL into `''` **and** report the field
+# as changed when the admin never touched it (task 047 / 046 debt item 5). These are exactly the
+# nullable text columns (`branding_text` / `sub_text` are NOT NULL, so they are deliberately absent).
+NULLABLE_TEXT_FIELDS = (
+    "app_logo_url",
+    "line_channel_access_token",
+    "line_channel_secret",
+    "line_liff_id",
+    "line_basic_id",
+)
+
+
+def _normalize(field: str, value):
+    """`""` and whitespace mean "no value" for a nullable text field, exactly like NULL."""
+    if field in NULLABLE_TEXT_FIELDS and isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
 def _apply_settings(
     settings: AppSettings, values: dict, fields: tuple[str, ...], is_new: bool
 ) -> list[str]:
@@ -83,11 +103,18 @@ def _apply_settings(
     `updated_at` / `updated_by` stay where they were (measured in task 046 Part A: the naive
     assignment the route used to do already emitted no UPDATE for an identical payload, because
     SQLAlchemy compares the value before flushing — this keeps that behaviour explicit).
+
+    Both sides are normalised first, so an untouched empty LINE/logo field (`""` in the request,
+    NULL in the row) is not a change, while a field that really held a value and was cleared IS one
+    and is stored as NULL (task 047: a deliberate clear must still be saved and audited).
     """
-    changed = [field for field in fields
-               if is_new or getattr(settings, field) != values.get(field)]
+    def differs(field: str) -> bool:
+        return is_new or (_normalize(field, getattr(settings, field))
+                          != _normalize(field, values.get(field)))
+
+    changed = [field for field in fields if differs(field)]
     for field in changed:
-        setattr(settings, field, values.get(field))
+        setattr(settings, field, _normalize(field, values.get(field)))
     return changed
 
 class AdminAppSettingsSchema(BaseModel):

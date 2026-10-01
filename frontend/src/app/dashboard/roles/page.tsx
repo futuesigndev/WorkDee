@@ -11,6 +11,7 @@ import {
   Lock,
   Plus,
   Trash2,
+  Pencil,
   X,
   Search,
   ChevronUp,
@@ -59,6 +60,16 @@ export default function RolesPermissionsPage() {
   
   const [roleToDelete, setRoleToDelete] = useState<Role | null>(null)
   const [deletingRole, setDeletingRole] = useState(false)
+
+  // Task 047/D13: the edit control the API has always allowed (`PATCH /roles/{id}`) but no screen
+  // offered. `notice` is the page-level result banner; `editMessage` is the modal's own line, used
+  // for the Thai validation (empty name) and for the server's `detail` (duplicate name, 404).
+  const [notice, setNotice] = useState({ type: "", text: "" })
+  const [roleToEdit, setRoleToEdit] = useState<Role | null>(null)
+  const [editRoleName, setEditRoleName] = useState("")
+  const [editRoleDesc, setEditRoleDesc] = useState("")
+  const [editMessage, setEditMessage] = useState<{ type: "error" | "info"; text: string } | null>(null)
+  const [savingRoleEdit, setSavingRoleEdit] = useState(false)
 
   const toggleParentCollapse = (id: string) => {
     setCollapsedParentIds(prev => 
@@ -229,6 +240,61 @@ export default function RolesPermissionsPage() {
     }
   }
 
+  const openEditRole = (role: Role) => {
+    setEditRoleName(role.name)
+    setEditRoleDesc(role.description ?? "")
+    setEditMessage(null)
+    setRoleToEdit(role)
+  }
+
+  /**
+   * Saves a role's name/description through the existing `PATCH /roles/{id}` (task 047/D13).
+   *
+   * The API decides what is allowed (a system role keeps its name; the page disables that field
+   * instead of guessing), and its `detail` is shown as written for the duplicate-name and 404 cases.
+   * A change that changes nothing is not sent at all: the API would leave it untraced, so the admin
+   * is told "ไม่มีการเปลี่ยนแปลง" instead of seeing a save that reported success but wrote no record.
+   */
+  const handleSaveRoleEdit = async () => {
+    if (!roleToEdit) return
+    const name = editRoleName.trim()
+    if (!name) {
+      setEditMessage({ type: "error", text: "กรุณากรอกชื่อบทบาท" })
+      return
+    }
+    const description = editRoleDesc.trim()
+    if (name === roleToEdit.name && description === (roleToEdit.description ?? "")) {
+      setEditMessage({ type: "info", text: "ไม่มีการเปลี่ยนแปลง" })
+      return
+    }
+    setSavingRoleEdit(true)
+    setEditMessage(null)
+    try {
+      const res = await apiFetch(`${API_URL}/api/v1/roles/${roleToEdit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // An empty description is sent as `""` (never omitted): the API reads `null` as "leave it
+        // alone", so only an explicit empty string can clear one.
+        body: JSON.stringify({ name, description }),
+      })
+      if (res.ok) {
+        const updated: Role = await res.json()
+        setRoles(prev => prev.map(r => (r.id === updated.id ? { ...r, ...updated } : r)))
+        setSelectedRole(prev => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev))
+        setRoleToEdit(null)
+        setNotice({ type: "success", text: "บันทึกบทบาทแล้ว" })
+        setTimeout(() => setNotice({ type: "", text: "" }), 3000)
+      } else {
+        const error = await res.json().catch(() => null)
+        setEditMessage({ type: "error", text: error?.detail || "บันทึกบทบาทไม่สำเร็จ" })
+      }
+    } catch (err) {
+      setEditMessage({ type: "error", text: permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้") })
+    } finally {
+      setSavingRoleEdit(false)
+    }
+  }
+
   const handleDeleteRole = async (roleId: string) => {
     setDeletingRole(true)
     try {
@@ -297,6 +363,17 @@ export default function RolesPermissionsPage() {
         </button>
       </div>
 
+      {notice.text && (
+        <div className={cn(
+          "px-4 py-3 rounded-2xl border text-xs font-bold",
+          notice.type === "success"
+            ? "bg-success/10 border-success/30 text-success"
+            : "bg-error/10 border-error/30 text-error"
+        )}>
+          {notice.text}
+        </div>
+      )}
+
       <div className="flex h-[calc(100vh-200px)] bg-base-100 rounded-2xl border border-base-200 overflow-hidden shadow-sm">
         <div className="w-80 border-r border-base-200 flex flex-col bg-base-200/20">
           <div className="p-4 border-b border-base-200 bg-base-100/50 flex items-center justify-between gap-2">
@@ -348,6 +425,7 @@ export default function RolesPermissionsPage() {
               >
                 <button
                   onClick={() => setSelectedRole(role)}
+                  aria-label={`เลือกบทบาท ${role.name} เพื่อกำหนดสิทธิ์เมนู`}
                   className="flex-1 text-left p-3.5 pr-1 text-xs font-bold truncate cursor-pointer"
                 >
                   <div className="truncate">{role.name}</div>
@@ -360,12 +438,29 @@ export default function RolesPermissionsPage() {
                 </button>
                 
                 <div className="flex items-center gap-0.5 pr-2.5 shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openEditRole(role)
+                    }}
+                    title="แก้ไขชื่อและคำอธิบาย"
+                    aria-label={`แก้ไขบทบาท ${role.name}`}
+                    className={cn(
+                      "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer flex items-center justify-center",
+                      selectedRole?.id === role.id 
+                        ? "text-primary-content/60 hover:text-white hover:bg-white/10" 
+                        : "text-base-content/30 hover:text-primary"
+                    )}
+                  >
+                    <Pencil size={13} />
+                  </button>
                   {!role.is_system_role && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
                         setRoleToDelete(role)
                       }}
+                      aria-label={`ลบบทบาท ${role.name}`}
                       className={cn(
                         "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/10 cursor-pointer flex items-center justify-center",
                         selectedRole?.id === role.id 
@@ -433,6 +528,7 @@ export default function RolesPermissionsPage() {
                             {isParent && childrenCount > 0 ? (
                               <button
                                 onClick={() => toggleParentCollapse(menu.id)}
+                                aria-label={isCollapsed ? `ขยายเมนูย่อยของ ${menu.label}` : `ย่อเมนูย่อยของ ${menu.label}`}
                                 className="p-1 hover:bg-base-200 rounded-md transition-colors text-base-content/40 hover:text-base-content mr-1"
                               >
                                 {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
@@ -466,6 +562,7 @@ export default function RolesPermissionsPage() {
                             <input 
                               type="checkbox" 
                               className="sr-only peer"
+                              aria-label={`เปิดใช้เมนู ${menu.label} ให้บทบาท ${selectedRole ? selectedRole.name : ""}`}
                               checked={allowedMenuIds.includes(menu.id)}
                               onChange={() => togglePermission(menu.id)}
                             />
@@ -555,6 +652,97 @@ export default function RolesPermissionsPage() {
               >
                 {creating && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 สร้างบทบาท
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Role Modal (task 047/D13) */}
+      {roleToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+          <div className="bg-base-100 rounded-3xl border border-base-300 w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-5 border-b border-base-300 flex justify-between items-center bg-base-200/50">
+              <div>
+                <h2 className="text-base font-black tracking-tight text-base-content flex items-center gap-2">
+                  <Pencil className="text-primary" size={16} /> แก้ไขบทบาท
+                </h2>
+                <p className="text-[11px] text-base-content/50 mt-0.5">แก้ชื่อและคำอธิบายของบทบาทนี้</p>
+              </div>
+              <button
+                onClick={() => setRoleToEdit(null)}
+                aria-label="ปิดหน้าต่างแก้ไขบทบาท"
+                className="p-1.5 hover:bg-base-300 rounded-xl text-base-content/40 hover:text-base-content transition-colors cursor-pointer flex items-center justify-center"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-base-content/40">ชื่อบทบาท</label>
+                <input
+                  type="text"
+                  aria-label="ชื่อบทบาท"
+                  value={editRoleName}
+                  disabled={roleToEdit.is_system_role}
+                  onChange={(e) => {
+                    setEditRoleName(e.target.value)
+                    setEditMessage(null)
+                  }}
+                  className="w-full bg-base-200 border-none rounded-xl px-3.5 py-2 text-xs focus:ring-1 focus:ring-primary outline-none font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                {roleToEdit.is_system_role && (
+                  <p className="text-[10px] font-bold text-base-content/40">
+                    บทบาทของระบบเปลี่ยนชื่อไม่ได้ แต่แก้คำอธิบายได้
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-base-content/40">รายละเอียด</label>
+                <textarea
+                  rows={3}
+                  aria-label="รายละเอียดบทบาท"
+                  value={editRoleDesc}
+                  onChange={(e) => {
+                    setEditRoleDesc(e.target.value)
+                    setEditMessage(null)
+                  }}
+                  placeholder="อธิบายหน้าที่หรือการเข้าถึงเมนูของบทบาทนี้"
+                  className="w-full bg-base-200 border-none rounded-xl px-3.5 py-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                />
+              </div>
+
+              {editMessage && (
+                <p className={cn(
+                  "text-[11px] font-bold px-3 py-2 rounded-xl border",
+                  editMessage.type === "error"
+                    ? "bg-error/10 border-error/30 text-error"
+                    : "bg-base-200 border-base-300 text-base-content/60"
+                )}>
+                  {editMessage.text}
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t border-base-300 flex justify-end gap-2 bg-base-200/50">
+              <button
+                onClick={() => setRoleToEdit(null)}
+                className="px-3.5 py-2 hover:bg-base-300 rounded-xl text-xs font-bold text-base-content/50 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleSaveRoleEdit}
+                disabled={savingRoleEdit}
+                className="bg-primary text-primary-content rounded-xl px-5 py-2 text-xs font-bold shadow-lg shadow-primary/10 flex items-center gap-1.5 cursor-pointer hover:opacity-90 active:scale-98 transition-all disabled:opacity-50"
+              >
+                {savingRoleEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                บันทึก
               </button>
             </div>
           </div>

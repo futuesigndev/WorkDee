@@ -590,7 +590,8 @@ export default function LineApprovalPage() {
             <div>
               <h2 className="text-lg font-black tracking-tight text-base-content">เมนูพนักงาน</h2>
               <p className="text-xs text-base-content/50 mt-0.5">
-                เมนูด้านล่างหน้าจอแชท LINE OA ที่พนักงานที่ผูกบัญชีแล้วเห็น (ปุ่ม ลงเวลา ใช้งานได้แล้ว ที่เหลือรอเปิดใช้)
+                เมนูด้านล่างหน้าจอแชท LINE OA ที่พนักงานที่ผูกบัญชีแล้วเห็น ทั้ง 4 ปุ่มใช้งานได้แล้ว
+                (ลงเวลา · รอบของฉัน · ประวัติการลงเวลา · ศูนย์รวมบริการ)
               </p>
             </div>
           </div>
@@ -1068,9 +1069,10 @@ export default function LineApprovalPage() {
                         <td className="px-6 py-4 text-right">
                           <button
                             onClick={() => openRevokeModal(u)}
+                            aria-label={`ยกเลิกการผูกบัญชีของ ${u.employee_name || u.employee_id}`}
                             className="px-3.5 py-1.5 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 active:scale-95"
                           >
-                            <UserX size={14} /> ยกเลิก
+                            <UserX size={14} /> ยกเลิกการผูกบัญชี
                           </button>
                         </td>
                       </tr>

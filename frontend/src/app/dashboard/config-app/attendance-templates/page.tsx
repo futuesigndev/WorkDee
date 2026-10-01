@@ -415,6 +415,7 @@ export default function AttendanceTemplatesPage() {
                         <button
                           onClick={() => setExpandedId(expandedId === row.id ? null : row.id)}
                           title="ดูรอบลงเวลา"
+                          aria-label={`${expandedId === row.id ? "ย่อ" : "ดู"}รอบลงเวลาของ ${row.name}`}
                           className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-base-200 text-base-content/40 transition-colors cursor-pointer"
                         >
                           {expandedId === row.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -451,6 +452,7 @@ export default function AttendanceTemplatesPage() {
                           <button
                             onClick={() => openEdit(row)}
                             title="แก้ไขแม่แบบ"
+                            aria-label={`แก้ไขแม่แบบ ${row.name}`}
                             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-primary/10 hover:text-primary text-base-content/40 transition-all cursor-pointer"
                           >
                             <Pencil size={15} />
@@ -458,6 +460,7 @@ export default function AttendanceTemplatesPage() {
                           <button
                             onClick={() => setConfirmRow(row)}
                             title={row.is_active ? "ปิดใช้งานแม่แบบ" : "เปิดใช้งานแม่แบบ"}
+                            aria-label={row.is_active ? `ปิดใช้งานแม่แบบ ${row.name}` : `เปิดใช้งานแม่แบบ ${row.name}`}
                             className={
                               row.is_active
                                 ? "w-8 h-8 flex items-center justify-center rounded-lg hover:bg-error/10 hover:text-error text-base-content/40 transition-all cursor-pointer"
@@ -623,6 +626,7 @@ export default function AttendanceTemplatesPage() {
                           onClick={() => removeRound(index)}
                           disabled={form.rounds.length <= MIN_ROUNDS}
                           title="ลบรอบนี้"
+                          aria-label={`ลบรอบที่ ${index + 1}${round.label ? ` (${round.label})` : ""}`}
                           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-error/10 hover:text-error text-base-content/40 transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                         >
                           <Trash2 size={15} />

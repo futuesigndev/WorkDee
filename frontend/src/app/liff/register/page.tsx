@@ -245,7 +245,10 @@ export default function LiffRegisterPage() {
       } else if (res.status === 409) {
         setStage("already_approved")
       } else if (res.status === 401) {
-        setErrorMsg(MSG_SESSION_EXPIRED)
+        // Task 047/D18: 401 covers two different situations — no LINE token was sent at all, or LINE
+        // no longer accepts the one that was. The backend sends a different sentence for each, so show
+        // what it actually said; the local constant is only the fallback when the body is unusable.
+        setErrorMsg(data?.detail || MSG_SESSION_EXPIRED)
         setStage("error")
       } else if (res.status === 503) {
         setErrorMsg(MSG_CANNOT_VERIFY)

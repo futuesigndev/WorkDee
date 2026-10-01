@@ -1161,7 +1161,10 @@ async def post_my_checkin(
         db,
         "ATTENDANCE_CHECKIN",
         employee_id,
-        f"Check-in for {employee_id} round {round_row.seq} ({round_row.label}): "
+        # Thai like every other audit row (task 047 / 046 debt item 3). The three outcome codes stay
+        # as they are — they are the machine-readable values HR support greps for, and they are what
+        # the 022 checks pin (no coordinates, no photo key, no clock time in this sentence).
+        f"ลงเวลาของพนักงาน {employee_id} รอบ {round_row.seq} ({round_row.label}): "
         f"{time_status} / {location_verdict.location_status} / {photo_status}",
         ["employee_id", "round_id", "time_status", "location_status", "photo_status", "flags"],
     )
@@ -1696,8 +1699,10 @@ async def review_checkin(
         db,
         "ATTENDANCE_REVIEW",
         current_user.employee_id,
-        f"Review of {row.id} ({row.employee_id}): {previous} -> {new_status}, "
-        f"note length {len(note) if note else 0}",
+        # Thai (task 047 / 046 debt item 3). Only the note's **length** is ever written — the reason
+        # an HR person typed never enters the audit trail. `verify022` pins this sentence.
+        f"ตรวจสอบรายการลงเวลา {row.id} ของพนักงาน {row.employee_id}: {previous} -> {new_status} "
+        f"(ความยาวหมายเหตุ {len(note) if note else 0})",
         ["id", "employee_id", "review_status", "reviewed_by", "reviewed_at", "review_note"],
     )
     try:
@@ -1755,7 +1760,9 @@ async def bulk_accept_checkins(
             db,
             "ATTENDANCE_REVIEW",
             current_user.employee_id,
-            f"Bulk accept: {updated} record(s) accepted, {skipped} skipped",
+            # The third row with this action code — Thai too, or the Logs page would show two
+            # languages for one action (task 047).
+            f"ตรวจสอบรายการลงเวลาแบบกลุ่ม: ยอมรับ {updated} รายการ ข้าม {skipped} รายการ",
             ["id", "review_status", "reviewed_by", "reviewed_at"],
         )
         await db.commit()

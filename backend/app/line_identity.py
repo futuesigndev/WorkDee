@@ -232,6 +232,10 @@ async def verify_line_id_token(id_token: str, db: AsyncSession) -> LineIdentity:
 # ─── FastAPI dependencies ─────────────────────────────────────────────────────────────────────
 
 LINE_SESSION_EXPIRED_DETAIL = "เซสชัน LINE หมดอายุ กรุณาปิดแล้วเปิดหน้านี้ใหม่จาก LINE"
+# Task 047/D18: "no token was sent at all" and "the token LINE no longer accepts" are two different
+# situations for the person reading the screen — the first one means the page was opened outside the
+# LINE app, the second one means they waited too long. Same 401, two sentences.
+LINE_ID_TOKEN_MISSING_DETAIL = "ไม่พบข้อมูลการเข้าสู่ระบบ LINE กรุณาเปิดหน้านี้จาก LINE อีกครั้ง"
 LINE_CANNOT_VERIFY_DETAIL = "ตรวจสอบตัวตนไม่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง"
 # Task 023: an APPROVED binding is not a licence to use the app. A deleted, deactivated or
 # deprovisioned employee is refused here too, with a sentence the employee can act on (and no
@@ -246,15 +250,16 @@ async def get_verified_line_identity(
     """Identity of the LIFF caller, from `Authorization: Bearer <LINE id_token>`.
 
     Every failure is fail-closed: a missing/duplicated/oversized/non-ASCII header is 401 without
-    ever calling LINE, an unusable verdict from LINE is 503.
+    ever calling LINE, an unusable verdict from LINE is 503. The 401 for "no usable token was sent"
+    carries its own Thai sentence (task 047/D18) so it cannot be mistaken for an expired session.
     """
     headers = request.headers.getlist("authorization")
     if len(headers) != 1:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LINE_SESSION_EXPIRED_DETAIL)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LINE_ID_TOKEN_MISSING_DETAIL)
 
     scheme, separator, raw_token = headers[0].partition(" ")
     if not separator or scheme.strip().lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LINE_SESSION_EXPIRED_DETAIL)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LINE_ID_TOKEN_MISSING_DETAIL)
 
     token = raw_token.strip()
     if (
@@ -263,7 +268,7 @@ async def get_verified_line_identity(
         or not token.isascii()
         or any(char.isspace() for char in token)
     ):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LINE_SESSION_EXPIRED_DETAIL)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=LINE_ID_TOKEN_MISSING_DETAIL)
 
     try:
         return await verify_line_id_token(token, db)

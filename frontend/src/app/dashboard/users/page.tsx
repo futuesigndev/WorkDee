@@ -40,6 +40,11 @@ export default function UsersPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- user row pending deletion; shape not modelled in the frontend yet (032)
   const [userToDelete, setUserToDelete] = useState<any | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Task 047/D9: the status pill asks first, because deactivating revokes the session the person is
+  // holding at that moment (task 023). Nothing is sent unless the admin confirms in the panel.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- user row awaiting a status change; shape not modelled yet (032)
+  const [userToToggle, setUserToToggle] = useState<any | null>(null)
+  const [togglingStatus, setTogglingStatus] = useState(false)
 
   // Sorting & Pagination states
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' } | null>(null)
@@ -147,21 +152,31 @@ export default function UsersPage() {
   }
 
 
-  const toggleUserStatus = async (employeeId: string, currentStatus: boolean) => {
+  /**
+   * Only the confirm button of the status panel reaches here. A deactivated user is signed out on
+   * their very next request (023), which is exactly why the panel spells that out before it happens.
+   */
+  const applyUserStatus = async (user: { employee_id: string; is_active: boolean }) => {
+    setTogglingStatus(true)
     try {
-      const res = await apiFetch(`${API_URL}/api/v1/users/${employeeId}/status`, {
+      const res = await apiFetch(`${API_URL}/api/v1/users/${user.employee_id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: !currentStatus }),
+        body: JSON.stringify({ is_active: !user.is_active }),
       })
       if (res.ok) {
+        setUserToToggle(null)
         fetchUsers()
       } else {
-        const error = await res.json()
-        alert(error.detail || "แก้ไขสถานะไม่สำเร็จ")
+        // A refusal has a Thai `detail` (e.g. the last active admin, or your own account); a bodyless
+        // error must not send the admin to the catch below with a network-flavoured message (045/D5).
+        const error = await res.json().catch(() => null)
+        alert(error?.detail || "แก้ไขสถานะไม่สำเร็จ")
       }
     } catch (err) {
       alert(permissionErrorMessage(err, "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
+    } finally {
+      setTogglingStatus(false)
     }
   }
 
@@ -278,7 +293,7 @@ export default function UsersPage() {
             className="w-full bg-base-200/50 border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary/20 outline-none"
           />
         </div>
-        <button onClick={fetchUsers} className="p-2 hover:bg-base-200 rounded-lg transition-colors text-base-content/50">
+        <button onClick={fetchUsers} aria-label="โหลดรายการผู้ใช้งานใหม่" className="p-2 hover:bg-base-200 rounded-lg transition-colors text-base-content/50">
           <RefreshCw size={18} className={cn(loading && "animate-spin")} />
         </button>
       </div>
@@ -334,6 +349,7 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <select 
+                        aria-label={`บทบาทของ ${u.full_name}`}
                         value={u.role_id}
                         onChange={(e) => changeUserRole(u.employee_id, e.target.value)}
                         className="bg-base-200 border-none rounded-lg text-xs font-bold px-3 py-1.5 focus:ring-1 focus:ring-primary outline-none"
@@ -343,7 +359,8 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button 
-                        onClick={() => toggleUserStatus(u.employee_id, u.is_active)}
+                        onClick={() => setUserToToggle(u)}
+                        aria-label={u.is_active ? `ปิดใช้งาน ${u.full_name}` : `เปิดใช้งาน ${u.full_name}`}
                         className={cn(
                           "px-3 py-1 rounded-full text-[10px] font-black transition-all cursor-pointer",
                           u.is_active 
@@ -359,6 +376,7 @@ export default function UsersPage() {
                         onClick={() => setUserToDelete(u)}
                         className="p-2 hover:bg-red-500/10 text-base-content/30 hover:text-red-600 rounded-lg transition-all cursor-pointer inline-flex items-center justify-center"
                         title="ลบผู้ใช้งาน"
+                        aria-label={`ลบผู้ใช้งาน ${u.full_name}`}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -426,6 +444,53 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {/* Status confirmation panel (task 047/D9) — the pill opens this; only "ยืนยัน" writes */}
+      {userToToggle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fade-in">
+          <div className="bg-base-100 rounded-3xl border border-base-300 w-full max-w-md shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className={cn(
+              "text-base font-black mb-2",
+              userToToggle.is_active ? "text-error" : "text-primary"
+            )}>
+              {userToToggle.is_active ? "ปิดใช้งานผู้ใช้งาน" : "เปิดใช้งานผู้ใช้งาน"}
+            </h3>
+            <p className="text-xs text-base-content/60 leading-relaxed mb-6">
+              {userToToggle.is_active ? (
+                <>
+                  ต้องการปิดใช้งาน <strong>{userToToggle.full_name}</strong> ใช่หรือไม่? ผู้ใช้รายนี้จะเข้าใช้งานไม่ได้ทันที
+                  และ <strong>เซสชันที่กำลังใช้งานอยู่จะถูกออกจากระบบ</strong> ข้อมูลเดิมยังอยู่ครบและเปิดใช้งานกลับได้ทุกเมื่อ
+                </>
+              ) : (
+                <>
+                  ต้องการเปิดใช้งาน <strong>{userToToggle.full_name}</strong> ใช่หรือไม่? ผู้ใช้รายนี้จะกลับเข้าใช้งานระบบได้อีกครั้ง
+                </>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setUserToToggle(null)}
+                className="px-3.5 py-2 hover:bg-base-200 rounded-xl text-xs font-bold text-base-content/50 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => applyUserStatus(userToToggle)}
+                disabled={togglingStatus}
+                className={cn(
+                  "text-xs font-bold rounded-xl px-5 py-2 transition-all flex items-center gap-1.5 cursor-pointer active:scale-98 disabled:opacity-50",
+                  userToToggle.is_active
+                    ? "bg-error text-error-content hover:opacity-90"
+                    : "bg-primary text-primary-content hover:opacity-90"
+                )}
+              >
+                {togglingStatus && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {userToToggle.is_active ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Provision Modal */}
       {showProvisionModal && (
@@ -524,6 +589,7 @@ export default function UsersPage() {
                   <div className="space-y-2">
                     <label className="text-xs font-black text-base-content/40">กำหนดบทบาทในระบบ</label>
                     <select
+                      aria-label="กำหนดบทบาทในระบบ"
                       value={selectedRoleName}
                       onChange={(e) => setSelectedRoleName(e.target.value)}
                       className="w-full bg-base-200 border-none rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 outline-none font-bold"
@@ -534,6 +600,11 @@ export default function UsersPage() {
                         </option>
                       ))}
                     </select>
+                    {roles.length === 0 && (
+                      <p className="text-[11px] font-bold text-warning">
+                        โหลดรายการบทบาทไม่สำเร็จ ระบบจะเพิ่มผู้ใช้ด้วยบทบาท User
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

@@ -122,13 +122,18 @@ async def seed_data(db: AsyncSession):
             db.add(RoleMenuPermission(role_id=admin_role.id, menu_id=menu.id, can_access=True))
 
     # 4. Seed App Settings if empty
+    # Thai on purpose (task 047/D19): the login page prints `branding_text` as the headline and
+    # `sub_text` under it, so a brand-new install used to show an English headline among Thai labels.
+    # The wording is the one the live install already carries (translated in task 026) — and because
+    # this block only runs when the table has **no** row, an existing install is never overwritten.
     stmt = select(AppSettings)
     existing_settings = (await db.execute(stmt)).scalar_one_or_none()
     if not existing_settings:
         db.add(AppSettings(
             app_name="WorkDee",
             theme="minimalist-slate",
-            branding_text="Empowering Digital Enterprise"
+            branding_text="ศูนย์รวมงาน HR ในที่เดียว",
+            sub_text="เริ่มจากระบบลงเวลา แล้วจะทยอยเพิ่มงาน HR ด้านอื่นให้ครบในระบบเดียว",
         ))
 
     await db.commit()
